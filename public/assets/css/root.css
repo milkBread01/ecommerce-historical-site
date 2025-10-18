@@ -1,0 +1,25 @@
+:root {
+    --color-primary: #7A936A;
+    --color-secondary: #5A6B4C;
+    --color-accent: #C9A961;
+    --color-bg: #1C1F18;
+    --color-surface: #272B22;
+    --color-text: #E5E8DC;
+    --color-text-muted: #9BA591;
+    --color-border: #3D4436;
+    --color-error: #C87A6F;
+    --color-success: #6B8A5E;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    
+}
+
+.main-content-wrapper {
+    min-height: 100vh;
+    background-color: var(--color-bg);
+    
+}
