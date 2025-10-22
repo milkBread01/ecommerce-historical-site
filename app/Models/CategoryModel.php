@@ -138,9 +138,10 @@ Parents
     public function getChildren(int $parentId, bool $onlyVisible = true): array
     {
         $builder = $this->where('parent_id', $parentId)->orderBy('name', 'ASC');
-        if ($onlyVisible && $this->fieldExists('is_visible')) {
+        if ($onlyVisible && $this->hasColumn('is_visible')) {
             $builder->where('is_visible', 1);
         }
+
         return $builder->findAll();
     }
 
@@ -230,4 +231,12 @@ Parents
         }
         return in_array(strtolower($field), $cache[$this->table], true);
     }
+
+    public function hasColumn(string $column, ?string $table = null): bool
+    {
+        $table = $table ?? $this->table;
+        $fields = $this->db->getFieldNames($table);
+        return in_array($column, $fields, true);
+    }
+
 }

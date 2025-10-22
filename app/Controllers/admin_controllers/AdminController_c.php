@@ -18,17 +18,24 @@ use App\Models\ItemUniformSpecsModel;
 
 class AdminController_c extends \App\Controllers\BaseController
 {
-    public function index(){
+    public function index()
+    {
         return view('admin_views/admin_dash');
     }
 
-    public function new_product_details(){
+    public function new_product_details()
+    {
         $allCategories = (new CategoryModel())->where('is_visible', 1)->findAll();
         $categories = $this->organizeCategories($allCategories);
 
         // Check if redirecting from new collection creation
         $preSelectedCollectionId = $this->request->getGet('collection_id');
         $isNewCollection = $this->request->getGet('new_collection') === '1';
+
+        $dimensionLength = $dimensionWidth = $dimensionHeight = $dimensionUnit = '';
+        $weightValue = $weightUnit = '';
+        $material1 = $material2 = $material3 = '';
+        $markings1 = $markings2 = $markings3 = '';
 
         $data = [
             'categories' => $categories,
@@ -37,6 +44,21 @@ class AdminController_c extends \App\Controllers\BaseController
             'collections'      => (new CollectionModel())->findAll(),
             'preSelectedCollectionId' => $preSelectedCollectionId,
             'isNewCollection' => $isNewCollection,
+            
+            'dimensionLength' => $dimensionLength,
+            'dimensionWidth' => $dimensionWidth,
+            'dimensionHeight' => $dimensionHeight,
+            'dimensionUnit' => $dimensionUnit,
+
+            'markings1' => $markings1,
+            'markings2' => $markings2,
+            'markings3' => $markings3,
+
+            'material1' => $material1,
+            'material2' => $material2,
+            'material3' => $material3,
+            'weightValue' => $weightValue,
+            'weightUnit' => $weightUnit,
         ];
         return view('admin_views/product_creation/new_product_details', $data);
     }
@@ -95,10 +117,15 @@ class AdminController_c extends \App\Controllers\BaseController
     /* details form validation */
     public function validate_npf_details()
     {
+        log_message('info', '==== validate_npf_details() STARTED ====');
+        
         $entryType = $this->request->getPost('entry_type');
+        log_message('info', 'Entry Type: ' . ($entryType ?? 'NULL'));
 
         // ---- HANDLE COLLECTION CREATION ----
         if ($entryType === 'create_collection') {
+            log_message('info', 'Processing collection creation...');
+            
             $rules = [
                 'collection_name' => 'required|min_length[3]|max_length[255]|is_unique[collections.collection_name]',
                 'collection_description' => 'required|min_length[10]',
@@ -106,8 +133,11 @@ class AdminController_c extends \App\Controllers\BaseController
             ];
             
             if (!$this->validate($rules)) {
+                log_message('error', 'Collection validation FAILED: ' . json_encode($this->validator->getErrors()));
                 return redirect()->back()->withInput()->with('validation', $this->validator);
             }
+            
+            log_message('info', 'Collection validation passed');
             
             $collectionData = [
                 'collection_name' => $this->request->getPost('collection_name'),
@@ -117,18 +147,28 @@ class AdminController_c extends \App\Controllers\BaseController
                 'bundle_price' => $this->request->getPost('collection_price') ?: null,
             ];
             
+            log_message('info', 'Collection data prepared: ' . json_encode($collectionData));
+            
             $collectionId = (new CollectionModel())->insert($collectionData);
             
             if (!$collectionId) {
+                log_message('error', 'Collection insert FAILED');
                 return redirect()->back()->withInput()->with('error', 'Failed to create collection.');
             }
             
-            // Redirect back with collection pre-selected, prompt to add first item
-            return redirect()->to('admin/new-product-details?collection_id=' . $collectionId . '&new_collection=1')
-                    ->with('success', 'Collection created successfully. Now add items to it.');
+            log_message('info', 'Collection created successfully with ID: ' . $collectionId);
+            
+            // Store collection info in session for later use
+            session()->set('new_collection_id', $collectionId);
+            session()->set('new_collection_name', $collectionData['collection_name']);
+            
+            // Continue processing as if it were an individual item creation
+            // The collection is already created, now we create the first item
+            log_message('info', 'Collection created with ID: ' . $collectionId . '. Continuing to create first item.');
         }
 
         // ---- HANDLE INDIVIDUAL ITEM (NEW OR ASSIGNED TO COLLECTION) ----
+        log_message('info', 'Processing item creation...');
         
         // Load models
         $itemGeneral   = new ItemGeneralInfoModel();
@@ -136,6 +176,7 @@ class AdminController_c extends \App\Controllers\BaseController
         $categoryModel = new CategoryModel();
 
         $post = $this->request->getPost();
+        log_message('info', 'Raw POST data keys: ' . implode(', ', array_keys($post)));
 
         // Normalize booleans
         $post['on_sale']         = isset($post['on_sale']) ? 1 : 0;
@@ -144,18 +185,36 @@ class AdminController_c extends \App\Controllers\BaseController
         $post['documentation']   = isset($post['documentation']) ? 1 : 0;
         $post['certificate_auth']= isset($post['certificate_auth']) ? 1 : 0;
 
+        log_message('info', 'Booleans normalized');
+
         // Validate item data
         $rules = $itemModel->getValidationRules() ?? [];
+        
+        // ✅ Make collection_id optional for individual items
+        if (isset($rules['collection_id'])) {
+            $rules['collection_id'] = 'permit_empty|is_natural_no_zero';
+        }
+        
+        log_message('info', 'Item validation rules count: ' . count($rules));
+        log_message('info', 'Modified collection_id rule: ' . ($rules['collection_id'] ?? 'not set'));
 
         if (!$this->validate($rules)) {
+            log_message('error', 'Item validation FAILED: ' . json_encode($this->validator->getErrors()));
             return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
         }
 
+        log_message('info', 'Item validation passed');
+
         // Category validation
         $categoryId = (int)($post['category_id'] ?? 0);
+        log_message('info', 'Category ID: ' . $categoryId);
+        
         if (!$categoryId || !$categoryModel->find($categoryId)) {
+            log_message('error', 'Category validation FAILED - Category ID: ' . $categoryId);
             return redirect()->back()->withInput()->with('error', 'Category is required and must exist.');
         }
+
+        log_message('info', 'Category validation passed');
 
         // Process discount
         $discountedPrice = null;
@@ -163,9 +222,11 @@ class AdminController_c extends \App\Controllers\BaseController
         
         if (!empty($post['amount_discount'])) {
             $discountedPrice = (float)$post['amount_discount'];
+            log_message('info', 'Amount discount applied: ' . $discountedPrice);
         } elseif (!empty($post['percentage_discount']) && $post['on_sale']) {
             $percentageOff = (float)$post['percentage_discount'];
             $discountedPrice = $price - ($price * ($percentageOff / 100));
+            log_message('info', 'Percentage discount applied: ' . $percentageOff . '% = ' . $discountedPrice);
         }
 
         // Process materials
@@ -173,16 +234,24 @@ class AdminController_c extends \App\Controllers\BaseController
             trim($post['material_1'] ?? ''),
             trim($post['material_2'] ?? ''),
             trim($post['material_3'] ?? '')
-        ], function($val) { return $val !== '' && $val !== null; });
+        ], function($val) { 
+            // Filter out empty strings, null, and "[object Object]"
+            return $val !== '' && $val !== null && !str_contains($val, '[object'); 
+        });
         $materialsStr = !empty($materials) ? implode(', ', $materials) : null;
+        log_message('info', 'Materials processed: ' . ($materialsStr ?? 'NULL'));
 
         // Process markings
         $markings = array_filter([
             trim($post['marking_1'] ?? ''),
             trim($post['marking_2'] ?? ''),
             trim($post['marking_3'] ?? '')
-        ], function($val) { return $val !== '' && $val !== null; });
+        ], function($val) { 
+            // Filter out empty strings, null, and "[object Object]"
+            return $val !== '' && $val !== null && !str_contains($val, '[object'); 
+        });
         $markingsStr = !empty($markings) ? implode(', ', $markings) : null;
+        log_message('info', 'Markings processed: ' . ($markingsStr ?? 'NULL'));
 
         // Process dimensions
         $dimensionsStr = null;
@@ -194,6 +263,7 @@ class AdminController_c extends \App\Controllers\BaseController
                 $post['dimension_height'],
                 $post['dimension_unit'] ?? 'cm'
             );
+            log_message('info', 'Dimensions processed: ' . $dimensionsStr);
         }
 
         // Process weight
@@ -204,12 +274,19 @@ class AdminController_c extends \App\Controllers\BaseController
                 $post['weight_value'],
                 $post['weight_unit'] ?? 'kg'
             );
+            log_message('info', 'Weight processed: ' . $weightStr);
         }
+
+        // Determine collection_id: prioritize newly created collection from session
+        $collectionId = session()->get('new_collection_id') 
+                        ?: ($this->request->getPost('collection_id') ?: null);
+        
+        log_message('info', 'Final collection_id: ' . ($collectionId ?? 'NULL'));
 
         // Build item payload
         $itemData = [
             'category_id'     => $categoryId,
-            'collection_id'   => $this->request->getPost('collection_id') ?: null,
+            'collection_id'   => $collectionId,
 
             'sku'             => $post['sku'] ?? null,
             'name'            => $post['name'] ?? null,
@@ -225,14 +302,16 @@ class AdminController_c extends \App\Controllers\BaseController
             'stock_quantity'  => (int)($post['stock_quantity'] ?? 0),
         ];
 
+        log_message('info', 'Item data prepared: ' . json_encode($itemData));
+
         // Build general info payload
         $generalData = [
             'era_period'        => $post['era_period'] ?? null,
             'country_origin'    => $post['country_origin'] ?? null,
             'branch_org'        => $post['branch_org'] ?? null,
             'unit_regiment'     => $post['unit_regiment'] ?? null,
-            'authenticity'      => $post['authenticity'] ?? null,
-            'condition'         => $post['condition'] ?? null,
+            'authenticity'      => !empty($post['authenticity']) ? trim($post['authenticity']) : null,
+            'condition'         => !empty($post['condition']) ? trim($post['condition']) : null,
             'dimensions_label'  => $dimensionsStr,
             'weight_label'      => $weightStr,
             'materials'         => $materialsStr,
@@ -245,22 +324,32 @@ class AdminController_c extends \App\Controllers\BaseController
             'certificate_type'  => $post['certificate_type'] ?? null,
         ];
 
+        log_message('info', 'General data prepared (without item_id): ' . json_encode($generalData));
+
         // Transaction: insert both or rollback
         $db = \Config\Database::connect();
         $db->transStart();
+        
+        log_message('info', 'Database transaction started');
 
         if (!$itemModel->insert($itemData)) {
             $db->transRollback();
+            log_message('error', 'Item insert FAILED: ' . json_encode($itemModel->errors() ?: []));
             return redirect()->back()->withInput()->with('error', 
                 'Could not save item: ' . implode('; ', $itemModel->errors() ?: [])
             );
         }
         
+        log_message('info', 'Item inserted successfully');
+        
         $itemId = $itemModel->getInsertID();
         if (!$itemId) {
             $db->transRollback();
+            log_message('error', 'Could not retrieve item ID after insert');
             return redirect()->back()->withInput()->with('error', 'Could not retrieve inserted item ID');
         }
+
+        log_message('info', 'Item ID retrieved: ' . $itemId);
 
         $generalData['item_id'] = (int)$itemId;
 
@@ -292,29 +381,64 @@ class AdminController_c extends \App\Controllers\BaseController
 
         $db->transComplete();
         if (!$db->transStatus()) {
+            log_message('error', 'Transaction FAILED to complete');
             return redirect()->back()->withInput()->with('error', 'Transaction failed while saving product.');
         }
 
-        // get parent slug and send to savePartials, if slug not found in function it will return null
+        log_message('info', 'Database transaction completed successfully');
+
+        // Get parent slug and send to savePartials
         $parentID = $categoryModel
             ->select('parent_id')
             ->where('category_id', $categoryId)
             ->first()['parent_id'] ?? null;
         if($parentID == null) $parentID = $categoryId;
 
+        log_message('info', 'Parent category ID determined: ' . $parentID);
+
         $parentSlug = $categoryModel
             ->select('slug')
             ->where('category_id', $parentID)
             ->first()['slug'] ?? null;
 
+        log_message('info', 'Parent slug retrieved: ' . ($parentSlug ?? 'NULL'));
+        log_message('info', 'Calling savePartials with slug: ' . $parentSlug . ', item_id: ' . $itemId);
+
         $partialSave = $this->savePartials($parentSlug, (int)$itemId);
         if ($partialSave instanceof \CodeIgniter\HTTP\RedirectResponse) {
+            log_message('error', 'savePartials returned a redirect (error occurred)');
             return $partialSave; // propagate redirect on error
         }
 
+        log_message('info', 'savePartials completed successfully');
+
+        // Build success message
+        $successMessage = 'Product details saved. You can now upload images.';
+        $newCollectionName = session()->get('new_collection_name');
+        
+        if ($newCollectionName) {
+            $successMessage = "Collection '{$newCollectionName}' created and first item added! You can now upload images, then add more items to this collection.";
+            // Clear the session data after use
+            session()->remove('new_collection_id');
+            session()->remove('new_collection_name');
+            log_message('info', 'Collection creation flow completed: ' . $newCollectionName);
+        } elseif ($collectionId) {
+            $collectionModel = new CollectionModel();
+            $collection = $collectionModel->find($collectionId);
+            if ($collection) {
+                $successMessage = "Item added to collection '{$collection['collection_name']}'! You can now upload images.";
+                log_message('info', 'Item added to existing collection: ' . $collection['collection_name']);
+            }
+        }
+
+        log_message('info', 'Success message prepared: ' . $successMessage);
+        log_message('info', 'Redirecting to image upload page for item_id: ' . $itemId);
+        log_message('info', '==== validate_npf_details() COMPLETED SUCCESSFULLY ====');
+
+        // Always redirect to image upload page
         return redirect()
             ->to(site_url('admin/new-product-images?item_id=' . $itemId))
-            ->with('success', 'Product details saved. You can now upload images.');
+            ->with('success', $successMessage);
     }
 
     private function savePartials($slug, $itemId)
@@ -446,6 +570,11 @@ class AdminController_c extends \App\Controllers\BaseController
     {
         $categoryModel = new CategoryModel();
         $category_id = $this->request->getPost('category_id');
+        
+        // Get item_id from POST (we'll add this to the AJAX call)
+        $item_id = $this->request->getPost('item_id');
+        if(!$item_id) log_message('info', 'No Item Id (creating new item)');
+        
         $slug = $categoryModel->find($category_id)['slug'] ?? null;
 
         $parentID = $categoryModel
@@ -460,33 +589,69 @@ class AdminController_c extends \App\Controllers\BaseController
             ->where('category_id', $parentID)
             ->first()['slug'] ?? null;
 
-        
+        /* log_message('info', '==================== Item ID: '. $item_id);
         log_message('info', 'Received AJAX request for category_id: ' . $category_id);
         log_message('info', 'slug: ' . $slug);
         log_message('info', 'parent ID: ' . $parentID);
-        log_message('info', 'parent slug: ' . $parentSlug);
-        log_message('info', 'admin_views/product_creation/partials/' . $parentSlug);
+        log_message('info', 'parent slug: ' . $parentSlug); */
 
-        // use slug to call the view file with the same name
+        // Load specs if we have an item_id (editing mode)
+        $specs = null;
+        if ($item_id) {
+            log_message('info', 'Loading specs for item_id: ' . $item_id);
+            
+            // Determine which spec model to use
+            $specModel = null;
+            switch ($parentSlug) {
+                case 'blades-edged-weapons':
+                    $specModel = new ItemBladeSpecsModel();
+                    break;
+                case 'books-manuals':
+                    $specModel = new ItemBookSpecsModel();
+                    break;
+                case 'documents-paper':
+                    $specModel = new ItemDocumentSpecsModel();
+                    break;
+                case 'field-gear-accoutrements':
+                    $specModel = new ItemGearSpecsModel();
+                    break;
+                case 'headgear':
+                    $specModel = new ItemHeadgearSpecsModel();
+                    break;
+                case 'insignia-awards':
+                    $specModel = new ItemClothInsigniaSpecsModel();
+                    break;
+                case 'medals':
+                    $specModel = new ItemMedalSpecsModel();
+                    break;
+                case 'uniforms':
+                    $specModel = new ItemUniformSpecsModel();
+                    break;
+            }
+
+            // Get specs if model exists
+            if ($specModel) {
+                $specs = $specModel->where('item_id', $item_id)->first();
+                log_message('info', 'Specs loaded: ' . ($specs ? 'Yes' : 'No'));
+            }
+        }
 
         $data = [
             'itemInformation'  => (new ItemModel())->findAll(),
             'itemGeneralSpecs' => (new ItemGeneralInfoModel())->findAll(),
+            'specs' => $specs,  // ✅ Pass specs to the partial
         ];
 
         try{
             return view('admin_views/product_creation/partials/' . $parentSlug, $data);
-        }catch(\Exception $e){
-            
+        } catch(\Exception $e) {
+            log_message('error', 'Error loading partial: ' . $e->getMessage());
             return null;
         }
-        
-
     }
 
     public function validate_npf_images()
     {
-
         log_message('info', 'Starting image upload process.');
         
         // get item id from hidden input field
@@ -507,29 +672,30 @@ class AdminController_c extends \App\Controllers\BaseController
 
         $imageModel = new ItemImageModel();
 
-        // Check if a primary image already exists for this item
-        $existingPrimary = $imageModel->where('item_id', $itemId)
-                               ->where('is_primary', 1)
-                               ->first();
-        log_message('info', 'Existing primary image for item_id ' . $itemId . ': ' . ($existingPrimary ? 'yes' : 'no'));
+        // Get form data
+        $titles = $this->request->getPost('title') ?? [];
+        $descriptions = $this->request->getPost('description') ?? [];
+        $altTexts = $this->request->getPost('alt_text') ?? [];
+        $removeFlags = $this->request->getPost('remove') ?? [];
+        $imageOrders = $this->request->getPost('image_order') ?? [];
+        $existingImageIds = $this->request->getPost('existing_image_id') ?? [];
 
-        $allImages = $imageModel->where('item_id', $itemId)->findAll();
-        log_message('info', 'Total images for item_id ' . $itemId . ': ' . count($allImages));
-        foreach ($allImages as $img) {
-            log_message('info', 'Image: ' . $img['image_id'] . ', is_primary: ' . $img['is_primary']);
-        }
-
-        $hasPrimaryImage = $existingPrimary !== null;
+        log_message('info', 'Form data - Titles: ' . count($titles) . ', Existing IDs: ' . count($existingImageIds));
+        log_message('info', 'Existing image indices: ' . json_encode(array_keys($existingImageIds)));
+        log_message('info', 'Image orders: ' . json_encode($imageOrders));
 
         // get uploaded files
         $files = $this->request->getFiles();
-        if (empty($files['product_images'])) {
-            log_message('error', 'No files uploaded for item_id: ' . $itemId);
-            return redirect()->back()->withInput()->with('error', 'No images were uploaded.');
+        $uploadedFiles = $files['product_images'] ?? [];
+        
+        // Check if there are any new uploads or existing images to update
+        $hasNewUploads = !empty($uploadedFiles) && is_array($uploadedFiles);
+        $hasExistingImages = !empty($existingImageIds);
+        
+        if (!$hasNewUploads && !$hasExistingImages) {
+            log_message('info', 'No new uploads and no existing images to update - allowing save');
         }
 
-        // get uploaded files array
-        $uploadedFiles = $files['product_images'];
         if (!is_array($uploadedFiles)) {
             $uploadedFiles = [$uploadedFiles];
         }
@@ -538,6 +704,7 @@ class AdminController_c extends \App\Controllers\BaseController
         $categoryModel = new CategoryModel();
         $category = $categoryModel->find($item['category_id']);
         $parentSlug = null;
+
         if ($category) {
             $parentID = $category['parent_id'] ?? null;
             if ($parentID === null) {
@@ -548,103 +715,283 @@ class AdminController_c extends \App\Controllers\BaseController
         }
 
         $imageBasePath = 'assets/images/product_images/' . $parentSlug . '/' . $itemId . '/';
-
-        $targetDir     = FCPATH . $imageBasePath;
+        $targetDir = FCPATH . $imageBasePath;
+        
         if (!is_dir($targetDir)) {
             @mkdir($targetDir, 0755, true);
         }
 
-
         log_message('info', 'Uploading images for item_id: ' . $itemId . ' under path: ' . $imageBasePath);
 
         $errors = [];
-
-        /*
-        'item_id',
-        'file_path',      // e.g. uploads/products/123/main.jpg
-        'url',            // optional CDN/external URL
-        'title',
-        'description',
-        'alt_text',
-        'image_order',    // integer sort within item
-        'is_primary',     // tinyint(1)
-        'width_px',
-        'height_px',
-        'checksum_sha1',
-        'uploaded_at',    // if your schema stores this timestamp
-        */
-
         $db = \Config\Database::connect();
         $db->transStart();
 
         $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        $dbPrimaryImageId = $imageModel
+                    ->select('image_id')
+                    ->where('is_primary', 1)
+                    ->where('item_id', $itemId)
+                    ->first()['image_id'] ?? null;
         
-        // for each uploaded file
-        foreach ($uploadedFiles as $index => $file) {
-            if (!$file->isValid() || $file->hasMoved()) {
-                continue;
-            }
+        $orderdImagesCopy = [];
+        foreach($existingImageIds as $idx => $imageId){
+            log_message('info', "Index {$idx}: existing_image_id {$imageId}");
+            $orderdImagesCopy[] = $imageId;
+        }
 
-            $remove = $this->request->getPost("remove[$index]") ?? '0';
-            if ($remove === '1') { continue; }
+        // STEP 1: Handle existing images (updates and deletions)
+        if ($hasExistingImages) {
+            log_message('info', 'Processing ' . count($existingImageIds) . ' existing images');
 
-            $mime = $file->getMimeType();
-            if (!in_array($mime, $allowedTypes, true)) {
-                $errors[] = "File {$file->getClientName()} has an invalid file type.";
-                continue;
-            }
-
-            $safeClient = preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientName());
-            $newFileName = uniqid('', true) . '_' . $safeClient;
-            $filePathRel = $imageBasePath . $newFileName;
-            $filePathAbs = $targetDir . $newFileName;
-
-            try {
-                $file->move($targetDir, $newFileName);
-            } catch (\Throwable $e) {
-                $errors[] = "Failed to move file {$file->getClientName()}: " . $e->getMessage();
-                continue;
-            }
-
-            $size = @getimagesize($filePathAbs);
-            $width  = $size[0] ?? null;
-            $height = $size[1] ?? null;
-            $checksum = @sha1_file($filePathAbs) ?: null;
-
-            $titlePost = $this->request->getPost("title[$index]") ?: '';
-            $fallbackTitle = pathinfo($file->getClientName(), PATHINFO_FILENAME);
-            $title = trim($titlePost) !== '' ? $titlePost : $fallbackTitle;
-
-            $description = $this->request->getPost("description[$index]") ?: null;
-            $altText     = $this->request->getPost("alt_text[$index]") ?: null;
-            $order = (int) ($this->request->getPost("image_order[$index]") ?? $index);
-
-            // ✅ Only set first image as primary if no primary exists yet
-            $isPrimary = (!$hasPrimaryImage && $index === 0) ? 1 : 0;
-
-            $data = [
-                'item_id'       => $itemId,
-                'file_path'     => $filePathRel,
-                'title'         => $title,
-                'description'   => $description,
-                'alt_text'      => $altText,
-                'image_order'   => $order,
-                'is_primary'    => $isPrimary,  // ✅ Fixed logic
-                'width_px'      => $width,
-                'height_px'     => $height,
-                'checksum_sha1' => $checksum,
-                'uploaded_at'   => date('Y-m-d H:i:s'),
-            ];
-
-            if (!$imageModel->insert($data)) {
-                $errors[] = "Failed to save image data for {$file->getClientName()}: " . implode('; ', $imageModel->errors() ?: []);
-                @unlink($filePathAbs);
-                continue;
+            $currentPrimaryImage = $orderdImagesCopy[0] ?? null;
+            if($currentPrimaryImage && $dbPrimaryImageId && $dbPrimaryImageId !== $currentPrimaryImage){
+                log_message('info', "Changing primary image from {$dbPrimaryImageId} to {$currentPrimaryImage}");
+                // setting old primary to 0
+                $imageModel->update($dbPrimaryImageId, ['is_primary' => 0]);
+                // setting new primary to 1
+                $imageModel->update($currentPrimaryImage, ['is_primary' => 1]);
             }
             
-            // ✅ After successfully inserting the first primary image, update the flag
-            if ($isPrimary) {
-                $hasPrimaryImage = true;
+            // Collect all existing image IDs and their new orders
+            $imagesToUpdate = [];
+            $imagesToDelete = [];
+            
+            foreach ($existingImageIds as $index => $imageId) {
+                $imageId = (int)$imageId;
+                if ($imageId <= 0) continue;
+                
+                $removeFlag = $removeFlags[$index] ?? '0';
+                
+                if ($removeFlag === '1') {
+                    $imagesToDelete[] = $imageId;
+                    log_message('info', "Image ID {$imageId} marked for deletion");
+                } else {
+                    $imagesToUpdate[$imageId] = [
+                        'index' => $index,
+                        'title' => $titles[$index] ?? '',
+                        'description' => $descriptions[$index] ?? null,
+                        'alt_text' => $altTexts[$index] ?? null,
+                        'image_order' => (int)($imageOrders[$index] ?? $index),
+                    ];
+                    log_message('info', "Image ID {$imageId} will be updated with order " . $imagesToUpdate[$imageId]['image_order']);
+                }
+            }
+            
+            // Delete marked images
+            foreach ($imagesToDelete as $imageId) {
+                log_message('info', 'Deleting image ID: ' . $imageId);
+                $existingImage = $imageModel->find($imageId);
+                if ($existingImage) {
+                    $filePath = FCPATH . $existingImage['file_path'];
+                    if (file_exists($filePath)) {
+                        @unlink($filePath);
+                    }
+                    $imageModel->delete($imageId);
+                    log_message('info', 'Deleted image ID: ' . $imageId);
+                }
+            }
+            
+            // Update images with new order - use a high offset to avoid conflicts
+            // First, find the maximum order value we're about to set
+            $maxNewOrder = 0;
+            foreach ($imagesToUpdate as $data) {
+                if ($data['image_order'] > $maxNewOrder) {
+                    $maxNewOrder = $data['image_order'];
+                }
+            }
+            
+            // Use an offset higher than any order we'll set
+            $tempOffset = $maxNewOrder + 1000;
+            
+            log_message('info', "Using temporary offset of {$tempOffset} to avoid order conflicts");
+            
+            // Temporarily set all images to offset values
+            foreach ($imagesToUpdate as $imageId => $data) {
+                $tempOrder = $tempOffset + $imageId;
+                log_message('info', "Setting image {$imageId} to temporary order {$tempOrder}");
+                
+                // Skip validation for this temporary update
+                $imageModel->skipValidation(true);
+                $imageModel->update($imageId, ['image_order' => $tempOrder]);
+                $imageModel->skipValidation(false);
+            }
+            
+            // Now update with actual values
+            foreach ($imagesToUpdate as $imageId => $data) {
+                $updateData = [
+                    'title' => $data['title'],
+                    'description' => $data['description'],
+                    'alt_text' => $data['alt_text'],
+                    'image_order' => $data['image_order'],
+                ];
+
+                log_message('info', "Updating image {$imageId} with final data: " . json_encode($updateData));
+
+                if (!$imageModel->update($imageId, $updateData)) {
+                    $modelErrors = $imageModel->errors();
+                    $errorMsg = "Failed to update Image ID: {$imageId}: " . json_encode($modelErrors);
+                    $errors[] = $errorMsg;
+                    log_message('error', $errorMsg);
+                } else {
+                    log_message('info', 'Successfully updated image ID: ' . $imageId . ' with order: ' . $updateData['image_order']);
+                }
+            }
+        }
+        
+        // STEP 2: Handle new uploads
+        if ($hasNewUploads) {
+            log_message('info', 'Processing new file uploads - total files: ' . count($uploadedFiles));
+            
+            // Check if a primary image already exists for this item
+            $existingPrimary = $imageModel->where('item_id', $itemId)
+                                ->where('is_primary', 1)
+                                ->first();
+            log_message('info', 'Existing primary image for item_id ' . $itemId . ': ' . ($existingPrimary ? 'yes (ID: ' . $existingPrimary['image_id'] . ')' : 'no'));
+
+            $hasPrimaryImage = $existingPrimary !== null;
+            
+            // Get the highest existing order to append new images
+            $maxOrder = $imageModel->where('item_id', $itemId)
+                                ->selectMax('image_order')
+                                ->first()['image_order'] ?? -1;
+            
+            log_message('info', "Current max order in DB: {$maxOrder}");
+
+            // Create a map of which indices have existing_image_ids (those are NOT new uploads)
+            $indicesWithExistingIds = array_keys($existingImageIds);
+            log_message('info', 'Indices with existing IDs: ' . json_encode($indicesWithExistingIds));
+            
+            // Find all indices that DON'T have existing_image_ids (those ARE new uploads)
+            $newUploadIndices = [];
+            foreach ($titles as $idx => $title) {
+                if (!isset($existingImageIds[$idx]) || empty($existingImageIds[$idx])) {
+                    $newUploadIndices[] = $idx;
+                    log_message('info', "Index {$idx} identified as NEW upload (title: {$title})");
+                }
+            }
+            log_message('info', 'New upload indices: ' . json_encode($newUploadIndices));
+
+            if (count($newUploadIndices) !== count($uploadedFiles)) {
+                log_message('warning', 'Mismatch: ' . count($uploadedFiles) . ' files uploaded but ' . count($newUploadIndices) . ' new indices found');
+            }
+
+            // Now process uploaded files and match them to their correct indices
+            $fileIndex = 0;
+            foreach ($uploadedFiles as $file) {
+                // Skip empty file inputs (error code 4 = UPLOAD_ERR_NO_FILE)
+                if ($file->getError() === 4) {
+                    log_message('info', "Skipping empty file input (no file selected)");
+                    continue;
+                }
+                
+                // Skip if we've run out of new upload indices
+                if ($fileIndex >= count($newUploadIndices)) {
+                    log_message('warning', 'More files uploaded than expected new indices');
+                    break;
+                }
+                
+                // Get the actual form index for this file
+                $formIndex = $newUploadIndices[$fileIndex];
+                $fileIndex++;
+                
+                log_message('info', "Processing file #{$fileIndex} ('{$file->getClientName()}') for form index: {$formIndex}");
+
+                if (!$file->isValid()) {
+                    $error = $file->getErrorString() . ' (' . $file->getError() . ')';
+                    log_message('error', "File at form index {$formIndex} is invalid: {$error}");
+                    $errors[] = "File {$file->getClientName()} is invalid: {$error}";
+                    continue;
+                }
+                
+                if ($file->hasMoved()) {
+                    log_message('info', "File at form index {$formIndex} has already been moved");
+                    continue;
+                }
+
+                $removeFlag = $removeFlags[$formIndex] ?? '0';
+                if ($removeFlag === '1') {
+                    log_message('info', "Skipping form index {$formIndex} - marked for removal");
+                    continue;
+                }
+
+                $mime = $file->getMimeType();
+                if (!in_array($mime, $allowedTypes, true)) {
+                    $errors[] = "File {$file->getClientName()} has an invalid file type: {$mime}";
+                    log_message('error', "Invalid file type for {$file->getClientName()}: {$mime}");
+                    continue;
+                }
+
+                $safeClient = preg_replace('/[^a-zA-Z0-9._-]/', '_', $file->getClientName());
+                $newFileName = uniqid('', true) . '_' . $safeClient;
+                $filePathRel = $imageBasePath . $newFileName;
+                $filePathAbs = $targetDir . $newFileName;
+
+                try {
+                    $file->move($targetDir, $newFileName);
+                    log_message('info', "File moved successfully to: {$filePathAbs}");
+                } catch (\Throwable $e) {
+                    $errors[] = "Failed to move file {$file->getClientName()}: " . $e->getMessage();
+                    log_message('error', "Failed to move file: " . $e->getMessage());
+                    continue;
+                }
+
+                $size = @getimagesize($filePathAbs);
+                $width = $size[0] ?? null;
+                $height = $size[1] ?? null;
+                $checksum = @sha1_file($filePathAbs) ?: null;
+
+                $titlePost = $titles[$formIndex] ?? '';
+                $fallbackTitle = pathinfo($file->getClientName(), PATHINFO_FILENAME);
+                $title = trim($titlePost) !== '' ? $titlePost : $fallbackTitle;
+
+                $description = $descriptions[$formIndex] ?? null;
+                $altText = $altTexts[$formIndex] ?? null;
+                
+                // Use provided order or append to the end
+                $order = isset($imageOrders[$formIndex]) && $imageOrders[$formIndex] !== '' 
+                    ? (int)$imageOrders[$formIndex] 
+                    : ++$maxOrder;
+
+                $isPrimary = (!$hasPrimaryImage) ? 1 : 0;
+                
+                $data = [
+                    'item_id' => $itemId,
+                    'file_path' => $filePathRel,
+                    'title' => $title,
+                    'description' => $description,
+                    'alt_text' => $altText,
+                    'image_order' => $order,
+                    'is_primary' => $isPrimary,
+                    'width_px' => $width,
+                    'height_px' => $height,
+                    'checksum_sha1' => $checksum,
+                    'uploaded_at' => date('Y-m-d H:i:s'),
+                ];
+                
+                log_message('info', "Preparing to insert image at form index {$formIndex}");
+                log_message('info', "Image data: " . json_encode($data));
+                
+                $insertResult = $imageModel->insert($data);
+                
+                if (!$insertResult) {
+                    $modelErrors = $imageModel->errors();
+                    $errorMsg = "Failed to save image data for {$file->getClientName()}: " . json_encode($modelErrors);
+                    $errors[] = $errorMsg;
+                    log_message('error', $errorMsg);
+                    log_message('error', "Insert returned: " . var_export($insertResult, true));
+                    @unlink($filePathAbs);
+                    continue;
+                }
+                
+                $insertedId = $imageModel->getInsertID();
+                log_message('info', "✓ Successfully inserted new image with ID: {$insertedId}, order: {$order}, isPrimary: {$isPrimary}");
+                
+                // After successfully inserting the first primary image, update the flag
+                if ($isPrimary) {
+                    $hasPrimaryImage = true;
+                    log_message('info', "First primary image set, subsequent images will be non-primary");
+                }
             }
         }
 
@@ -652,16 +999,22 @@ class AdminController_c extends \App\Controllers\BaseController
 
         $errCount = count($errors);
         log_message('info', "Image upload completed for item_id: {$itemId} with {$errCount} errors.");
+        log_message('info', "Transaction status: " . ($db->transStatus() ? 'SUCCESS' : 'FAILED'));
 
         if ($db->transStatus() === false) {
+            log_message('error', 'Transaction failed for item_id: ' . $itemId);
+            log_message('error', 'Database error: ' . $db->error());
             return redirect()->back()->withInput()->with('error', 'Upload failed; transaction rolled back.')->with('errors', $errors);
         }
         
+        $successMsg = $errCount > 0 
+            ? 'Images processed with some errors. Check details below.' 
+            : 'Images uploaded successfully.';
+        
         return redirect()
             ->to(site_url('admin/dashboard'))
-            ->with('success', 'Images uploaded successfully.')
+            ->with('success', $successMsg)
             ->with('errors', $errors);
     }
-
 
 }

@@ -1,11 +1,12 @@
 #-------------------------
 # Operating Specific Junk Files
 #-------------------------
-
+vg_db.sql
 # exclude session folder 
 session/
 # exclude tests folder
 tests/
+
 
 # OS X
 .DS_Store

@@ -38,6 +38,153 @@ The product categories contain the information:
     'is_visible',      // tinyint(1) default 1
     'is_temporary',    // tinyint(1) default 0 
  -->
+<?php
+    $authOptions = [
+        'Original' => 'Original',
+        'Reproduction' => 'Reproduction',
+        'Replica w/ period parts' => 'Replica w/ period parts',
+        'Unknown' => 'Unknown'
+    ];
+
+    $conditionOptions = [
+        'Mint' => 'Mint',
+        'Excellent' => 'Excellent',
+        'Very Good' => 'Very Good',
+        'Good' => 'Good',
+        'Fair' => 'Fair',
+        'Poor' => 'Poor'
+    ];
+
+    $documentationType = [
+        'manual'=>'Manual',
+        'certificate'=>'Certificate',
+        'other'=>'Other',
+    ];
+
+    $certificateTypes = [
+        'authenticity'=>'Certificate of Authenticity',
+        'appraisal'=>'Appraisal Document',
+        'provenance'=>'Provenance Document',
+        'other'=>'Other',
+    ];
+
+    $dimensionUnitOptions = [
+        'feet' => 'Feet',
+        'inches'=>'Inches',
+        'mils' => 'Mils',
+        'meters'=>'Meters',
+        'cm'=>'Centimeter',
+        'mm'=>'Millimeter',
+    ];
+
+    $weightUnits = [
+        'lbs'=>'Pounds (lbs)',
+        'kg'=>'Kilograms (kg)',
+        'g'=>'Grams (g)',
+        'oz'=>'Ounces (oz)'
+    ];
+
+    $generalData = $item ?? [];
+
+    // Get field value where priority is: old() > db data > default value
+    $getValue = function($field, $default = '') use ($generalData) {
+        $oldValue = old($field);
+        
+        // Handle old() returning an array (shouldn't happen for text fields, but just in case)
+        if (is_array($oldValue)) {
+            $oldValue = null;
+        }
+        
+        // If old value exists and is not empty string, use it
+        if ($oldValue !== null && $oldValue !== '') {
+            return $oldValue;
+        }
+        
+        // Check database data
+        if (isset($generalData[$field])) {
+            // Handle array values in database data
+            if (is_array($generalData[$field])) {
+                return $default;
+            }
+            if ($generalData[$field] !== null) {
+                return $generalData[$field];
+            }
+        }
+        
+        return $default;
+    };
+
+    $isSelected = function($field, $value) use ($getValue) {
+        return $getValue($field) == $value ? 'selected' : '';
+    };
+
+    // Do the same for the other getValue functions:
+    $historicalData = $generalInfo ?? [];
+
+    $getValueHistorical = function($field, $default = '') use ($historicalData) {
+        $oldValue = old($field);
+        
+        if (is_array($oldValue)) {
+            $oldValue = null;
+        }
+        
+        if ($oldValue !== null && $oldValue !== '') {
+            return $oldValue;
+        }
+        
+        if (isset($historicalData[$field])) {
+            if (is_array($historicalData[$field])) {
+                return $default;
+            }
+            if ($historicalData[$field] !== null) {
+                return $historicalData[$field];
+            }
+        }
+        
+        return $default;
+    };
+
+    $isSelectedHist = function($field, $value) use ($getValueHistorical) {
+        return $getValueHistorical($field) == $value ? 'selected' : '';
+    };
+
+    $collectionData = $collection ?? [];
+
+    $getValueCollection = function($field, $default = '') use ($collectionData) {
+        $oldValue = old($field);
+        
+        if (is_array($oldValue)) {
+            $oldValue = null;
+        }
+        
+        if ($oldValue !== null && $oldValue !== '') {
+            return $oldValue;
+        }
+        
+        if (isset($collectionData[$field])) {
+            if (is_array($collectionData[$field])) {
+                return $default;
+            }
+            if ($collectionData[$field] !== null) {
+                return $collectionData[$field];
+            }
+        }
+        
+        return $default;
+    };
+
+    $isSelectedCollection = function($field, $value) use ($getValueCollection) {
+        return $getValueCollection($field) == $value ? 'selected' : '';
+    };
+
+    // Determine if we're editing an existing item with a collection
+    $hasCollection = !empty($item['collection_id']);
+
+    // Default entry type based on existing data
+    $defaultEntryType = 'individual_item';
+
+?>
+
 
 <!-- Collection Information -->
 <!-- COLLECTION ENTRY TYPE TOGGLE -->
@@ -48,17 +195,18 @@ The product categories contain the information:
             type="radio" 
             name="entry_type" 
             value="individual_item" 
-            checked
+            <?= old('entry_type', $defaultEntryType) === 'individual_item' ? 'checked' : '' ?>
             id="individual-item"
             class="entry-type-radio"
         >
-        Add Individual Item (optionally assign to existing collection)
+        <?= $hasCollection ? 'Individual Item (currently in a collection)' : 'Add Individual Item (optionally assign to existing collection)' ?>
     </label>
     <label>
         <input 
             type="radio" 
             name="entry_type" 
             value="create_collection"
+            <?= old('entry_type') === 'create_collection' ? 'checked' : '' ?>
             id="create-collection"
             class="entry-type-radio"
         >
@@ -67,9 +215,24 @@ The product categories contain the information:
 </div>
 
 <!-- SECTION 1: ASSIGN TO EXISTING COLLECTION (shown for individual items) -->
-<div id="assign-to-collection-section" class="form-section" style="display: none;">
+<div id="assign-to-collection-section" class="form-section" style="<?= old('entry_type', $defaultEntryType) === 'individual_item' ? 'display: block;' : 'display: none;' ?>">
     <h3 class="section-title">Collection Assignment (Optional)</h3>
-    <p class="help-text">This item can be sold individually. Optionally assign it to an existing collection.</p>
+    
+    <?php if($hasCollection && !empty($collectionData)): ?>
+        <div class="form-group info-box info">
+            <p><strong>📦 Current Collection</strong></p>
+            <p>This item is currently part of: <strong><?= esc($getValueCollection('collection_name')) ?></strong></p>
+            <p>
+                Sale Type: <strong><?= $getValueCollection('is_bundle_only') == '1' ? 'Bundle Only' : 'Individual Sales Allowed' ?></strong>
+            </p>
+            <?php if($getValueCollection('bundle_price')): ?>
+                <p>Bundle Price: <strong>$<?= number_format($getValueCollection('bundle_price'), 2) ?></strong></p>
+            <?php endif; ?>
+            <p class="help-text">You can change or remove the collection assignment below.</p>
+        </div>
+    <?php else: ?>
+        <p class="help-text">This item can be sold individually. Optionally assign it to an existing collection.</p>
+    <?php endif; ?>
     
     <?php if($isNewCollection ?? false): ?>
         <div class="form-group info-box success">
@@ -82,25 +245,49 @@ The product categories contain the information:
         <label for="collection-select">Select Collection (or leave blank for no collection):</label>
         <select id="collection-select" name="collection_id">
             <option value="">-- None / Not Part of Collection --</option>
-            <?php foreach($collections as $collection): ?>
+            <?php foreach($collections as $coll): ?>
                 <option 
-                    value="<?= $collection['collection_id'] ?>"
-                    <?= (old('collection_id') ?: $preSelectedCollectionId) == $collection['collection_id'] ? 'selected' : '' ?>
+                    value="<?= $coll['collection_id'] ?>"
+                    <?php 
+                        // Priority: old() > preSelectedCollectionId > current collection_id from item
+                        $selectedCollectionId = old('collection_id') 
+                            ?: ($preSelectedCollectionId ?? $getValue('collection_id', ''));
+                        echo $selectedCollectionId == $coll['collection_id'] ? 'selected' : '';
+                    ?>
                 >
-                    <?= esc($collection['collection_name']) ?>
-                    <?php if($collection['is_bundle_only']): ?>
+                    <?= esc($coll['collection_name']) ?>
+                    <?php if($coll['is_bundle_only']): ?>
                         (Bundle Only)
                     <?php else: ?>
                         (Individual Sales Allowed)
                     <?php endif; ?>
+                    <?php if(!empty($coll['bundle_price'])): ?>
+                        - Bundle: $<?= number_format($coll['bundle_price'], 2) ?>
+                    <?php endif; ?>
                 </option>
             <?php endforeach; ?>
         </select>
+        <p class="help-text">
+            <?php if($hasCollection): ?>
+                <strong>Tip:</strong> Select "None" to remove this item from its current collection.
+            <?php else: ?>
+                <strong>Tip:</strong> Collections help you group related items together.
+            <?php endif; ?>
+        </p>
+        <?php if(isset($validation) && $validation->hasError('collection_id')): ?>
+            <div class="error-message"><?= $validation->getError('collection_id') ?></div>
+        <?php endif; ?>
+    </div>
+    
+    <!-- Display selected collection info dynamically -->
+    <div id="selected-collection-info" class="form-group info-box" style="display: none;">
+        <p><strong>Selected Collection Details:</strong></p>
+        <div id="collection-details-content"></div>
     </div>
 </div>
 
 <!-- SECTION 2: CREATE NEW COLLECTION (shown when creating collection) -->
-<div id="create-collection-section" class="form-section" style="display: none;">
+<div id="create-collection-section" class="form-section" style="<?= old('entry_type') === 'create_collection' ? 'display: block;' : 'display: none;' ?>">
     <h3 class="section-title">New Collection Details</h3>
     
     <div class="form-group">
@@ -109,7 +296,7 @@ The product categories contain the information:
             type="text" 
             id="collection-name" 
             name="collection_name" 
-            value="<?= old('collection_name') ?>"
+            value="<?= esc($getValueCollection('collection_name')) ?>"
         >
         <p class="help-text">e.g., "American Civil War Officer's Kit", "WWI German Helmet Set"</p>
         <?php if(isset($validation) && $validation->hasError('collection_name')): ?>
@@ -123,7 +310,7 @@ The product categories contain the information:
             id="collection-description" 
             name="collection_description" 
             rows="4"
-        ><?= old('collection_description') ?></textarea>
+        ><?= esc($getValueCollection('collection_description')) ?></textarea>
         <p class="help-text">Explain the historical significance and why these items belong together</p>
         <?php if(isset($validation) && $validation->hasError('collection_description')): ?>
             <div class="error-message"><?= $validation->getError('collection_description') ?></div>
@@ -137,7 +324,7 @@ The product categories contain the information:
                 type="radio" 
                 name="is_bundle_only" 
                 value="0"
-                <?= old('is_bundle_only') == '0' ? 'checked' : '' ?>
+                <?= $getValueCollection('is_bundle_only', '0') == '0' ? 'checked' : '' ?>
                 class="bundle-option"
             >
             Items can be purchased individually OR as a collection set
@@ -147,7 +334,7 @@ The product categories contain the information:
                 type="radio" 
                 name="is_bundle_only" 
                 value="1"
-                <?= old('is_bundle_only') == '1' ? 'checked' : '' ?>
+                <?= $getValueCollection('is_bundle_only', '0') == '1' ? 'checked' : '' ?>
                 class="bundle-option"
             >
             Collection set only (no individual item sales)
@@ -157,14 +344,14 @@ The product categories contain the information:
         <?php endif; ?>
     </div>
 
-    <div id="bundle-price-section" class="form-group" style="display: none;">
+    <div id="bundle-price-section" class="form-group" style="<?= $getValueCollection('is_bundle_only') == '1' ? 'display: block;' : 'display: none;' ?>">
         <label for="collection-price">Bundle Price (USD) - Optional:</label>
         <input 
             type="number" 
             step="0.01" 
             id="collection-price" 
             name="collection_price" 
-            value="<?= old('collection_price') ?>"
+            value="<?= esc($getValueCollection('bundle_price')) ?>"
         >
         <p class="help-text">Leave blank to calculate from individual item prices. Set a custom price for bundle discounts.</p>
         <?php if(isset($validation) && $validation->hasError('collection_price')): ?>
@@ -189,7 +376,7 @@ The product categories contain the information:
             type="text" 
             id="name" 
             name="name" 
-            value="<?= old('name') ?>"
+            value="<?= esc($getValue('name')) ?>"
             required
         >
         <?php if(isset($validation) && $validation->hasError('name')): ?>
@@ -209,7 +396,7 @@ The product categories contain the information:
                     <!-- Add parent as option if needed -->
                     <option 
                         value="<?= $categoryData['category']['category_id'] ?>"
-                        <?= old('category_id') == $categoryData['category']['category_id'] ? 'selected' : '' ?>
+                        <?= $isSelected('category_id', $categoryData['category']['category_id']) ?>
                     >
                         <?= esc($categoryData['category']['name']) ?>
                     </option>
@@ -218,7 +405,7 @@ The product categories contain the information:
                     <?php foreach($categoryData['children'] as $child): ?>
                         <option 
                             value="<?= $child['category_id'] ?>"
-                            <?= old('category_id') == $child['category_id'] ? 'selected' : '' ?>
+                            <?= $isSelected('category_id', $child['category_id']) ?>
                         >
                             &nbsp;&nbsp;→ <?= esc($child['name']) ?>
                         </option>
@@ -240,7 +427,7 @@ The product categories contain the information:
             id="description" 
             name="description" 
             rows="4"
-        ><?= old('description') ?></textarea>
+        ><?= esc($getValue('description')) ?></textarea>
 
         <?php if(isset($validation) && $validation->hasError('description')): ?>
             <div class="error-message"><?= $validation->getError('description') ?></div>
@@ -255,7 +442,7 @@ The product categories contain the information:
             id="short-description" 
             name="teaser" 
             rows="2"
-        ><?= old('teaser') ?></textarea>
+        ><?= esc($getValue('teaser')) ?></textarea>
 
         <?php if(isset($validation) && $validation->hasError('teaser')): ?>
             <div class="error-message"><?= $validation->getError('teaser') ?></div>
@@ -269,7 +456,7 @@ The product categories contain the information:
             type="text" 
             id="sku" 
             name="sku" 
-            value="<?= old('sku') ?>"
+            value="<?= esc($getValue('sku')) ?>"
             required
         >
         <?php if(isset($validation) && $validation->hasError('sku')): ?>
@@ -285,7 +472,7 @@ The product categories contain the information:
             step="0.01" 
             id="price" 
             name="price" 
-            value="<?= old('price') ?>" 
+            value="<?= esc($getValue('price')) ?>" 
             required
         >
         <?php if(isset($validation) && $validation->hasError('price')): ?>
@@ -295,25 +482,12 @@ The product categories contain the information:
 
     <!-- Is Product on Sale? -->
     <div class="form-group">
-        <p>Is Product on Sale?</p>
-        <label>
-            <input 
-                type="radio" 
-                name="on_sale" 
-                value="1" 
-                <?= old('on_sale') == '1' ? 'checked' : '' ?>
-            >
-            Yes
-        </label>
-        <label>
-            <input 
-                type="radio" 
-                name="on_sale" 
-                value="0" 
-                <?= old('on_sale') == '0' ? 'checked' : '' ?> 
-            >
-            No
-        </label>
+        <label for="on_sale">Is Product on Sale?</label>
+        <select id="on_sale" name="on_sale">
+            <option value="">-- Select Option --</option>
+            <option value="1" <?= esc($getValue('on_sale', '1')) ?>>Yes</option>
+            <option value="0" <?= esc($getValue('on_sale', '0')) ?>>No</option>
+        </select>
         <?php if(isset($validation) && $validation->hasError('on_sale')): ?>
             <div class="error-message"><?= $validation->getError('on_sale') ?></div>
         <?php endif; ?>
@@ -329,7 +503,7 @@ The product categories contain the information:
                 step="0.01" 
                 id="percentage-discount" 
                 name="percentage_discount" 
-                value="<?= old('percentage_discount') ?>"
+                value="<?= esc($getValue('percentage_discount')) ?>"
             >
             <br><br>
             <label for="amount-discount">Total Cost of Product After Discount (USD):</label>
@@ -338,7 +512,7 @@ The product categories contain the information:
                 step="0.01" 
                 id="amount-discount" 
                 name="amount_discount" 
-                value="<?= old('amount_discount') ?>"
+                value="<?= esc($getValue('amount_discount')) ?>"
             >
         </div>
      </div>
@@ -350,7 +524,7 @@ The product categories contain the information:
             type="number" 
             id="stock-quantity" 
             name="stock_quantity" 
-            value="<?= old('stock_quantity') ?>" 
+            value="<?= esc($getValue('stock_quantity')) ?>" 
             required
         >
         <?php if(isset($validation) && $validation->hasError('stock_quantity')): ?>
@@ -360,42 +534,22 @@ The product categories contain the information:
 
     <!-- IS FEATURED -->
     <div class="form-group">
-        <p>Is Product a Featured Item?</p>
-        <label>
-            <input 
-                type="radio" 
-                name="is_featured" 
-                value="1" 
-                <?= old('is_featured') == '1' ? 'checked' : '' ?>
-            >
-            Yes
-        </label>
-        <label>
-            <input 
-                type="radio" 
-                name="is_featured" 
-                value="0" 
-                <?= old('is_featured') == '0' ? 'checked' : '' ?> 
-            >
-            No
-        </label>
+        <label for="is_featured">Is Product a Featured Item?</label>
+        <select id="is_featured" name="is_featured">
+            <option value="">-- Select Option --</option>
+            <option value="1" <?= esc($getValue('is_featured', '0')) ?>>Yes</option>
+            <option value="0" <?= esc($getValue('is_featured', '0')) ?>>No</option>
+        </select>
     </div>
 
     <!-- IS VISIBLE -->
     <div class="form-group">
-        <p>Should Product be Visible in Store?</p>
-        <label>
-            <input 
-                type="radio" 
-                name="visible" 
-                value="1" 
-                <?= old('visible') == '1' ? 'checked' : '' ?>>
-            Yes
-        </label>
-        <label>
-            <input type="radio" name="visible" value="0" <?= old('visible') == '0' ? 'checked' : '' ?>>
-            No
-        </label>
+        <label for="visible">Should Product be Visible in Store?</label>
+        <select id="visible" name="visible">
+            <option value="">-- Select Option --</option>
+            <option value="1" <?= esc($getValue('visible', '1')) ?>>Yes (Visible)</option>
+            <option value="0" <?= esc($getValue('visible', '1'))  ?>>No (Hidden)</option>
+        </select>
         <div class="error-message">
             <?php if(isset($validation) && $validation->hasError('visible')): ?>
                 <?= $validation->getError('visible') ?>
@@ -410,7 +564,7 @@ The product categories contain the information:
             type="url" 
             id="video-url" 
             name="video_url" 
-            value="<?= old('video_url') ?>" 
+            value="<?= esc($getValue('video_url')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('video_url')): ?>
             <div class="error-message"><?= $validation->getError('video_url') ?></div>
@@ -429,7 +583,7 @@ The product categories contain the information:
             type="text" 
             id="era-period" 
             name="era_period" 
-            value="<?= old('era_period') ?>" 
+            value="<?= esc($getValueHistorical('era_period')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('era_period')): ?>
             <div class="error-message"><?= $validation->getError('era_period') ?></div>
@@ -444,7 +598,7 @@ The product categories contain the information:
             type="text" 
             id="country-origin" 
             name="country_origin" 
-            value="<?= old('country_origin') ?>" 
+            value="<?= esc($getValueHistorical('country_origin')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('country_origin')): ?>
             <div class="error-message"><?= $validation->getError('country_origin') ?></div>
@@ -458,7 +612,7 @@ The product categories contain the information:
             type="text" 
             id="branch-org" 
             name="branch_org" 
-            value="<?= old('branch_org') ?>" 
+            value="<?= esc($getValueHistorical('branch_org')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('branch_org')): ?>
             <div class="error-message"><?= $validation->getError('branch_org') ?></div>
@@ -472,7 +626,7 @@ The product categories contain the information:
             type="text" 
             id="unit-regiment" 
             name="unit_regiment" 
-            value="<?= old('unit_regiment') ?>" 
+            value="<?= esc($getValueHistorical('unit_regiment')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('unit_regiment')): ?>
             <div class="error-message"><?= $validation->getError('unit_regiment') ?></div>
@@ -484,15 +638,12 @@ The product categories contain the information:
         <label for="authenticity">Authenticity:</label>
         <select id="authenticity" name="authenticity">
             <option value="">-- Select Authenticity --</option>
-            <?php 
-                $authOptions = ['Original','Reproduction','Replica w/ period parts','Unknown'];
-                foreach($authOptions as $option): 
-            ?>
+            <?php foreach($authOptions as $value =>$label):  ?>
                 <option 
-                    value="<?= $option ?>" 
-                    <?= old('authenticity') == $option ? 'selected' : '' ?>
+                    value="<?= esc($value) ?>" 
+                    <?= $isSelectedHist('authenticity', $value) ?>
                 >
-                    <?= $option ?>
+                    <?= esc($label) ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -501,20 +652,17 @@ The product categories contain the information:
         <?php endif; ?>
     </div>
 
-    <!-- CONDITION -->
+    <!-- Fix the CONDITION select field too -->
     <div class="form-group">
         <label for="condition">Condition:</label>
         <select id="condition" name="condition">
             <option value="">-- Select Condition --</option>
-            <?php 
-                $conditionOptions = ['Mint','Excellent','Very Good','Good','Fair','Poor'];
-                foreach($conditionOptions as $option): 
-            ?>
+            <?php foreach($conditionOptions as $value => $label): ?>
                 <option 
-                    value="<?= $option ?>" 
-                    <?= old('condition') == $option ? 'selected' : '' ?>
+                    value="<?= esc($value) ?>"
+                    <?= $isSelectedHist('condition', $value) ?>
                 >
-                    <?= $option ?>
+                    <?= esc($label) ?>
                 </option>
             <?php endforeach; ?>
         </select>
@@ -525,49 +673,36 @@ The product categories contain the information:
 
     <!-- DIMENSIONS -->
     <div class="form-group">
-        <label for="dimensions-label">Dimensions:</label>
-        <input 
-            type="text" 
-            id="dimensions-label" 
-            name="dimensions_label" 
-            value="<?= old('dimensions_label') ?>" 
-        >
-        <?php if(isset($validation) && $validation->hasError('dimensions_label')): ?>
-            <div class="error-message"><?= $validation->getError('dimensions_label') ?></div>
-        <?php endif; ?>
-        <p class="help-text">Please enter the dimensions in the format: L x W x H (e.g., 10 x 5 x 3 cm)</p>
+        <label class="help-text">Please enter the dimensions in the format: L x W x H (e.g., 10 x 5 x 3 cm)</label>
         <div class="dimension-inputs">
             <input 
                 type="number" 
                 step="0.01" 
                 name="dimension_length" 
                 placeholder="Length" 
-                value="<?= old('dimension_length') ?>" 
+                value="<?= esc($dimensionLength) ?? 0 ?>"
             >
             <input 
                 type="number" 
                 step="0.01" 
                 name="dimension_width" 
                 placeholder="Width" 
-                value="<?= old('dimension_width') ?>" 
+                value="<?= esc($dimensionWidth) ?? 0 ?>" 
             >
             <input 
                 type="number" 
                 step="0.01" 
                 name="dimension_height" 
                 placeholder="Height" 
-                value="<?= old('dimension_height') ?>" 
+                value="<?= esc($dimensionHeight) ?? 0 ?>" 
             >
             <select name="dimension_unit">
-                <?php 
-                    $unitOptions = ['cm','inches','mm'];
-                    foreach($unitOptions as $unit): 
-                ?>
+                <?php foreach($dimensionUnitOptions as $value => $label): ?>
                     <option 
-                        value="<?= $unit ?>" 
-                        <?= old('dimension_unit') == $unit ? 'selected' : '' ?>
+                        value="<?= esc($value) ?>" 
+                        <?= esc($isSelectedHist('dimension_unit', $value)) ?? 'inches' ?>
                     >
-                        <?= $unit ?>
+                        <?= esc($label) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -591,18 +726,15 @@ The product categories contain the information:
                 step="0.01" 
                 name="weight_value" 
                 placeholder="Weight" 
-                value="<?= old('weight_value') ?>" 
+                value="<?= esc($getValueHistorical('weight_value')) ?? 0?>" 
             >
             <select name="weight_unit">
-                <?php 
-                    $weightUnits = ['kg','g','lbs','oz'];
-                    foreach($weightUnits as $unit): 
-                ?>
+                <?php foreach($weightUnits as $value => $label): ?>
                     <option 
-                        value="<?= $unit ?>" 
-                        <?= old('weight_unit') == $unit ? 'selected' : '' ?>
+                        value="<?= esc($value) ?>" 
+                        <?= esc($isSelectedHist('weight_unit', $value)) ?? 'g' ?>
                     >
-                        <?= $unit ?>
+                        <?= esc($label) ?>
                     </option>
                 <?php endforeach; ?>
             </select>
@@ -623,19 +755,19 @@ The product categories contain the information:
                 type="text" 
                 name="material_1" 
                 placeholder="Material 1" 
-                value="<?= old('material_1') ?>" 
+                value="<?= esc($material1) ?? '-' ?>" 
             >
             <input 
                 type="text" 
                 name="material_2" 
                 placeholder="Material 2" 
-                value="<?= old('material_2') ?>" 
+                value="<?= esc($material2) ?? '-'?>" 
             >
             <input 
                 type="text" 
                 name="material_3" 
                 placeholder="Material 3" 
-                value="<?= old('material_3') ?>" 
+                value="<?= esc($material3) ?? '-'?>" 
             >
         </div>
         <?php if(isset($validation) && ($validation->hasError('material_1') || $validation->hasError('material_2') || $validation->hasError('material_3'))): ?>
@@ -655,19 +787,19 @@ The product categories contain the information:
                 type="text" 
                 name="marking_1" 
                 placeholder="Marking 1" 
-                value="<?= old('marking_1') ?>" 
+                value="<?= esc($markings1) ?? '-'?>" 
             >
             <input 
                 type="text" 
                 name="marking_2" 
                 placeholder="Marking 2" 
-                value="<?= old('marking_2') ?>" 
+                value="<?= esc($markings2) ?? '-'?>" 
             >
             <input 
                 type="text" 
                 name="marking_3" 
                 placeholder="Marking 3" 
-                value="<?= old('marking_3') ?>" 
+                value="<?= esc($markings3) ?? '-'?>" 
             >
         </div>
         <?php if(isset($validation) && ($validation->hasError('marking_1') || $validation->hasError('marking_2') || $validation->hasError('marking_3'))): ?>
@@ -686,7 +818,7 @@ The product categories contain the information:
             type="text" 
             id="serial-numbers" 
             name="serial_numbers" 
-            value="<?= old('serial_numbers') ?>" 
+            value="<?= ($getValueHistorical('serial_numbers')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('serial_numbers')): ?>
             <div class="error-message"><?= $validation->getError('serial_numbers') ?></div>
@@ -701,7 +833,7 @@ The product categories contain the information:
             type="text" 
             id="provenance-source" 
             name="provenance_source" 
-            value="<?= old('provenance_source') ?>" 
+            value="<?= esc($getValueHistorical('provenance_source')) ?>" 
         >
         <?php if(isset($validation) && $validation->hasError('provenance_source')): ?>
             <div class="error-message"><?= $validation->getError('provenance_source') ?></div>
@@ -710,27 +842,12 @@ The product categories contain the information:
 
     <!-- DOCUMENTATION -->
     <div class="form-group">
-        <p>Does the Product Include Documentation?</p>
-        <label>
-            <input 
-                type="radio" 
-                name="documentation" 
-                id="documentation-yes"
-                value="1" 
-                <?= old('documentation') == '1' ? 'checked' : '' ?> 
-            >
-            Yes
-        </label>
-        <label>
-            <input 
-                type="radio" 
-                name="documentation" 
-                id="documentation-no"
-                value="0" 
-                <?= old('documentation') == '0' ? 'checked' : '' ?> 
-            >
-            No
-        </label>
+        <label for="documentation">Does the Product Include Documentation?</label>
+        <select id="documentation" name="documentation">
+            <option value="">-- Select --</option>
+            <option value="1" <?= $isSelectedHist('documentation','1')?>>Yes</option>
+            <option value="0" <?= $isSelectedHist('documentation','0')?>>No</option>
+        </select>
         <?php if(isset($validation) && $validation->hasError('documentation')): ?>
             <div class="error-message"><?= $validation->getError('documentation') ?></div>
         <?php endif; ?>
@@ -738,33 +855,17 @@ The product categories contain the information:
     <div class="form-group">
         <div class="documentation-inputs" id="documentation-inputs" style="display: none;">
             <p>Please specify the type of documentation.</p>
-            <label>
-                <input 
-                    type="radio" 
-                    name="documentation_type" 
-                    value="manual" 
-                    <?= old('documentation_type') == 'manual' ? 'checked' : '' ?>
-                >
-                Manual
-            </label>
-            <label>
-                <input 
-                    type="radio" 
-                    name="documentation_type" 
-                    value="certificate" 
-                    <?= old('documentation_type') == 'certificate' ? 'checked' : '' ?>
-                >
-                Certificate
-            </label>
-            <label>
-                <input 
-                    type="radio" 
-                    name="documentation_type" 
-                    value="other" 
-                    <?= old('documentation_type') == 'other' ? 'checked' : '' ?>
-                >
-                Other
-            </label>
+            <label for = "documentation_type">Please specify the type of documentation.</label>
+            <select id="documentation_type" name = "documentation_type">
+                <?php foreach($documentationType as $value =>$label): ?>
+                    <option
+                        value = "<?= esc($value)?>"
+                        <?= $isSelectedHist('documentation_type', $value)?>
+                    >
+                        <?= esc($label)?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
 
             <?php if(isset($validation) && ($validation->hasError('documentation_type'))): ?>
                 <div class="error-message">
@@ -776,44 +877,31 @@ The product categories contain the information:
 
     <!-- CERTIFICATE OF AUTHENTICITY -->
     <div class="form-group">
-        <p>Does the Product Include a Certificate of Authenticity?</p>
-        <label>
-            <input 
-                type="radio" 
-                name="certificate_auth" 
-                value="1" 
-                <?= old('certificate_auth') == '1' ? 'checked' : '' ?> 
-            >
-            Yes
-        </label>
-        <label>
-            <input 
-                type="radio" 
-                name="certificate_auth" 
-                value="0" 
-                <?= old('certificate_auth') == '0' ? 'checked' : '' ?> >
-            No
-        </label>
+        <label for="certificate_auth">Does the Product Include a Certificate of Authenticity?</label>
+        <select id = "certificate_auth" name="certificate_auth">
+            <option value="">-- Select --</option>
+            <option value="1" <?= $isSelectedHist('certificate_auth','1')?>>Yes</option>
+            <option value="0" <?= $isSelectedHist('certificate_auth','0')?>>No</option>
+        </select>
+        
         <?php if(isset($validation) && $validation->hasError('certificate_auth')): ?>
             <div class="error-message"><?= $validation->getError('certificate_auth') ?></div>
         <?php endif; ?>
     </div>
-    <div class = "form-group">
 
+    <div class = "form-group">
         <div class="certificate-inputs" id="certificate-inputs" style="display: none;">
-            <p>Please specify the type of certificate of authenticity.</p>
-            <label>
-                <input type="radio" name="certificate_type" value="original" <?= old('certificate_type') == 'original' ? 'checked' : '' ?> >
-                Original
-            </label>
-            <label>
-                <input type="radio" name="certificate_type" value="copy" <?= old('certificate_type') == 'copy' ? 'checked' : '' ?> >
-                Copy
-            </label>
-            <label>
-                <input type="radio" name="certificate_type" value="other" <?= old('certificate_type') == 'other' ? 'checked' : '' ?> >
-                Other
-            </label>
+            <label for="certificate_type">Please specify the type of certificate of authenticity.</label>
+            <select id="certificate_type" name = "certificate_type">
+                <?php foreach($certificateTypes as $value =>$label): ?>
+                    <option
+                        value = "<?= esc($value)?>"
+                        <?= $isSelectedHist('certificate_type', $value)?>
+                    >
+                        <?= esc($label)?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
 
             <?php if(isset($validation) && ($validation->hasError('certificate_type'))): ?>
                 <div class="error-message">

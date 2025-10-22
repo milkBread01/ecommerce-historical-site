@@ -21,5 +21,10 @@
 .main-content-wrapper {
     min-height: 100vh;
     background-color: var(--color-bg);
+
+    background-image: url('/assets/images/site_images/background/gplay.png');
+    background-repeat: repeat;
+    background-position: center;
+    background-size:auto;
     
 }

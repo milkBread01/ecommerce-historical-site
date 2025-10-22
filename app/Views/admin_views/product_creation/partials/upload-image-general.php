@@ -14,9 +14,9 @@
         'uploaded_at',    // if your schema stores this timestamp
 
 -->
-<p>Upload product images below. The first image will be the primary image but image order can be changed later in the edit menu.</p>
+<br>
 <div class = "form-group">
-    <label class="form-label">Select Images</label>
+    <label class="form-label">Select Images</label><br>
     <div class="upload-area" id="upload-trigger">
         <div class="upload-icon">+</div>
         <div class="upload-text">Browse…</div>
@@ -30,12 +30,58 @@
         accept="image/*" 
         style="display: none;"
     >
-
-    <p class="sub-text">Note: After Uploading a set of images, if you want to append an image it will replace the previous set. This includes any input information such as image titles and descriptions. <br><br>If you have already added images, please re-upload the entire set with the new images included. If the existing images have associated titles and descriptions, <strong>they will be lost.</strong></p>
 </div>
 
 <!-- will be populated by JS -->
 <div class="form-group" id="preview-container">
+    <?php if(!empty($images)):?>
+        <?php foreach($images as $idx => $image): ?>
+            <div class="image-card" data-index="<?= $idx ?>" data-existing-id="<?= esc($image['image_id']) ?>">
+                <div class="order-badge">Order <?= $idx + 1 ?></div>
+                <div class="drag-handle">⋮⋮</div>
+                <img src="<?= base_url($image['file_path']) ?>" class="thumb" />
+                
+                <div class="meta-fields">
+                    <label>
+                        Title
+                        <input 
+                            type="text" 
+                            name="title[<?= $idx ?>]" 
+                            value="<?= esc($image['title'] ?? '') ?>"
+                        />
+                    </label>
+
+                    <label>
+                        Description
+                        <textarea name="description[<?= $idx ?>]" rows="3"><?= esc($image['description'] ?? '') ?></textarea>
+                    </label>
+                </div>
+
+                <button 
+                    type="button" 
+                    class="remove-btn"
+                >Remove</button>
+
+                <!-- hidden fields -->
+                <input 
+                    type="hidden" 
+                    name="remove[<?= $idx ?>]" 
+                    value="0"
+                />
+                <input 
+                    type="hidden" 
+                    name="image_order[<?= $idx ?>]" 
+                    value="<?= $idx ?>"
+                />
+                <!-- Store the existing image ID so backend knows which DB record to update -->
+                <input 
+                    type="hidden" 
+                    name="existing_image_id[<?= $idx ?>]" 
+                    value="<?= esc($image['image_id']) ?>"
+                />
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
 
 </div>
 

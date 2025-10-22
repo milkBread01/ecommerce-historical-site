@@ -5,6 +5,12 @@
         <div class="npf-form-container">
             <h2 class="form-title">Add New Product - Step 1: Product Details</h2>
             <h3 class="form-subtitle">Enter the product specifications below:</h3>
+            <hr>
+            <br>
+            <a href="<?= base_url('admin/dashboard') ?>" class="btn btn-primary">
+                Return to Admin Dashboard
+            </a>
+            <br><br>
 
             <form 
                 action="<?= site_url('admin/validate_npf_details') ?>" 

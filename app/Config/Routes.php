@@ -30,4 +30,13 @@ $routes->group('admin', function ($routes) {
 
     $routes->post('validate_npf_images', 'admin_controllers\AdminController_c::validate_npf_images');
 
+    $routes->post('change-visibility','admin_controllers\EditProducts_c::changeVisibility');
+
 });
+
+$routes->group('products', function ($routes) {
+    $routes->get('category/(:segment)','customer_controllers\CustomerController_c::index/$1');
+
+});
+
+$routes->get('navigation/json', 'Navigation::getNavigationJson');

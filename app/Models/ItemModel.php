@@ -13,7 +13,7 @@ class ItemModel extends Model
 
     protected $allowedFields    = [
         'category_id',
-
+        'collection_id',
         'sku',
         'name',
         'description',
@@ -39,7 +39,7 @@ class ItemModel extends Model
      * ----------------------------- */
     protected $validationRules = [
         'category_id'     => 'required|integer',
-
+        'collection_id'   => 'permit_empty|integer',
         'sku'             => 'permit_empty|max_length[64]',
         'name'            => 'required|min_length[2]|max_length[255]',
         'description'     => 'permit_empty|max_length[2000]',

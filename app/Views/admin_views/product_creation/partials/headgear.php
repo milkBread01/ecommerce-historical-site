@@ -24,7 +24,7 @@
     use ($Data) : imports variables and they become available inside the function. this is a 'by value' copy of the variable, to pass by reference use the & operator
 
 */
-    $headgearData = $headgear_data ?? [];
+    $headgearData = $specs ?? [];
 
     // get field value where priorety is: current Data (old() function) > db data > default value
     $getValue = function($field, $default='') use($headgearData){
@@ -70,7 +70,7 @@
             <?php foreach ($headgearTypes as $value => $label): ?>
                 <option 
                     value="<?= esc($value) ?>" 
-                    <?= old('headgear_type') === $value ? 'selected' : '' ?>
+                    <?= $isSelected('headgear_type',$value) ?>
                 >
                     <?= esc($label) ?>
                 </option>
@@ -82,8 +82,8 @@
         <label for="insignia_present">Insignia Present:</label>
         <select id="insignia_present" name="insignia_present">
             <option value="">-- Select --</option>
-            <option value="1" <?= old('insignia_present') === '1' ? 'selected' : '' ?>>Yes</option>
-            <option value="0" <?= old('insignia_present') === '0' ? 'selected' : '' ?>>No</option>
+            <option value="1" <?= $isSelected('insignia_present', '1') ?>>Yes</option>
+            <option value="0" <?= $isSelected('insignia_present', '0') ?>>No</option>
         </select>
     </div>
     
@@ -93,7 +93,7 @@
             type="text" 
             id="liner_material" 
             name="liner_material" 
-            value="<?= old('liner_material') ?>"
+            value="<?= $getValue('liner_material') ?>"
             placeholder="e.g., leather, fabric"
         >
     </div>
@@ -104,7 +104,7 @@
             type="text" 
             id="size_marked" 
             name="size_marked" 
-            value="<?= old('size_marked') ?>"
+            value="<?= $getValue('size_marked') ?>"
             placeholder="e.g., 57, 7 1/8"
         >
     </div>
@@ -113,8 +113,8 @@
         <label for="chinstrap_present">Chinstrap Present:</label>
         <select id="chinstrap_present" name="chinstrap_present">
             <option value="">-- Select --</option>
-            <option value="1" <?= old('chinstrap_present') === '1' ? 'selected' : '' ?>>Yes</option>
-            <option value="0" <?= old('chinstrap_present') === '0' ? 'selected' : '' ?>>No</option>
+            <option value="1" <?= $isSelected('chinstrap_present', '1') ?>>Yes</option>
+            <option value="0" <?= $isSelected('chinstrap_present', '0') ?>>No</option>
         </select>
     </div>
 
@@ -124,7 +124,7 @@
             type="text" 
             id="shell_material" 
             name="shell_material" 
-            value="<?= old('shell_material') ?>"
+            value="<?= $getValue('shell_material') ?>"
             placeholder="e.g., steel, plastic, leather"
         >
     </div>

@@ -16,28 +16,37 @@
                 <?php $parentUrl = site_url('admin/products/category/' . esc($catData['category']['slug'])); ?>
 
                 <section class="category-card">
-                <!-- full-card cover link (for parent) -->
-                <a class="card-cover-link" href="<?= $parentUrl ?>" aria-label="Open <?= esc($catData['category']['name']) ?>"></a>
+                    <!-- full-card cover link (for parent) -->
+                    <a class="card-cover-link" href="<?= $parentUrl ?>" aria-label="Open <?= esc($catData['category']['name']) ?>"></a>
 
-                <h2 class="card-title">
-                    <a class="card-title-link" href="<?= $parentUrl ?>">
-                    <?= esc($catData['category']['name']) ?>
-                    </a>
-                </h2>
-
-                <?php if (!empty($catData['children'])): ?>
-                    <ul class="child-list">
-                    <?php foreach ($catData['children'] as $child): ?>
-                        <li>
-                        <a class="child-link" href="<?= site_url('admin/products/category/' . esc($child['slug'])) ?>">
-                            <?= esc($child['name']) ?>
+                    <h2 class="card-title">
+                        <a class="card-title-link" href="<?= $parentUrl ?>">
+                            <?= esc($catData['category']['name']) ?>
                         </a>
-                        </li>
-                    <?php endforeach; ?>
-                    </ul>
-                <?php else: ?>
-                    <p class="child-empty">No subcategories</p>
-                <?php endif; ?>
+                        <span class="item-count-badge">
+                            <?= $catData['item_count'] ?> items
+                        </span>
+                        <?php if ($catData['total_count'] > $catData['item_count']): ?>
+                            <span class="total-count-badge">
+                                (<?= $catData['total_count'] ?> total)
+                            </span>
+                        <?php endif; ?>
+                    </h2>
+
+                    <?php if (!empty($catData['children'])): ?>
+                        <ul class="child-list">
+                            <?php foreach ($catData['children'] as $child): ?>
+                                <li>
+                                    <a class="child-link" href="<?= site_url('admin/products/category/' . esc($child['slug'])) ?>">
+                                        <?= esc($child['name']) ?> <strong>(<?= $child['item_count'] ?>)</strong>
+                                    </a>
+                                    
+                                </li>
+                            <?php endforeach; ?>
+                        </ul>
+                    <?php else: ?>
+                        <p class="child-empty">No subcategories</p>
+                    <?php endif; ?>
                 </section>
             <?php endforeach; ?>
         </div>

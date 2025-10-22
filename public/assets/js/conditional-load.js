@@ -1,70 +1,87 @@
-try{
+try {
+    console.log('----------- Conditional Load -----------')
+    const certSelect = document.getElementById('certificate_auth');
+    const certificateInputs = document.getElementById('certificate-inputs');
+
+    const documentationSelect = document.getElementById('documentation');
+    const documentationInputs = document.getElementById('documentation-inputs');
+
+    const saleSelect = document.getElementById('on_sale');
+    const saleInputs = document.getElementById('on-sale-info');
     
-    const documentationRadios = document.querySelectorAll('input[type=radio][name=documentation]');
-
-    const authenticationRadios = document.querySelectorAll('input[type=radio][name=certificate_auth]');
-
-    const saleRadios = document.querySelectorAll('input[type=radio][name=on_sale]');
-
-    const percentDiscount = document.querySelector('input[type=number][name=percentage_discount]');
-
-    const amountDiscount = document.querySelector('input[type=number][name=amount_discount]');
-    
-    const assignDocVisibility = document.getElementById('documentation-inputs');
-    const assignAuthVisibility = document.getElementById('certificate-inputs');
-    const assignSaleInfoVisibility = document.getElementById('on-sale-info');
-
-    percentDiscount.addEventListener("input", function() {
-        if (this.value !== '') {
-            amountDiscount.value = '';
+    // Function to toggle certificate type visibility
+    function toggleCertificateInputs() {
+        const output = certSelect.options[certSelect.selectedIndex].value;
+        console.log(`Selected Certificate State: ${output}`);
+        
+        if (output === '1') {
+            certificateInputs.style.display = 'block';
+        } else {
+            certificateInputs.style.display = 'none';
         }
-    });
-
-    amountDiscount.addEventListener("input", function() {
-        if (this.value !== '') {
-            percentDiscount.value = '';
-        }
-    });
-
-    documentationRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            if(this.value === '1'){
-                console.log('yes doc');
-                assignDocVisibility.style.display='block';
-            }else if(this.value === '0'){
-                console.log('no doc');
-                assignDocVisibility.style.display='none';
-            }
-        })
-    })
-
-    authenticationRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            if(this.value === '1'){
-                console.log('yes Auth');
-                assignAuthVisibility.style.display='block';
-            }else if(this.value === '0'){
-                console.log('no Auth');
-                assignAuthVisibility.style.display='none';
-            }
-        })
-    })
-
-    saleRadios.forEach(radio => {
-        radio.addEventListener('change', function() {
-            if(this.value === '1'){
-                console.log('yes sale');
-                assignSaleInfoVisibility.style.display='block';
-            }else if(this.value === '0'){
-                console.log('no sale');
-                assignSaleInfoVisibility.style.display='none';
-            }
-        })
-    })
-
+    }
     
+    // Run on page load to set initial state
+    toggleCertificateInputs();
+    
+    // Add event listener for changes
+    certSelect.addEventListener('change', toggleCertificateInputs);
+
+    // ---------------------------------------------------------
+
+    function toggleDocumentationInputs() {
+        const output = documentationSelect.options[documentationSelect.selectedIndex].value;
+        console.log(`Selected Documentation State: ${output}`);
+        
+        if (output === '1') {
+            documentationInputs.style.display = 'block';
+        } else {
+            documentationInputs.style.display = 'none';
+        }
+    }
+    
+    // Run on page load to set initial state
+    toggleDocumentationInputs();
+    
+    // Add event listener for changes
+    documentationSelect.addEventListener('change', toggleDocumentationInputs);
+
+    // ---------------------------------------------------------
+
+    function toggleSaleInputs() {
+        const output = saleSelect.options[saleSelect.selectedIndex].value;
+        console.log(`Selected Sale State: ${output}`);
+        
+        if (output === '1') {
+            saleInputs.style.display = 'block';
+        } else {
+            saleInputs.style.display = 'none';
+        }
+    }
+    
+    // Run on page load to set initial state
+    toggleSaleInputs();
+    
+    // Add event listener for changes
+    saleSelect.addEventListener('change', toggleSaleInputs);
+
+    // ---------------------------------------------------------
 
 
-}catch(err) {
+    const percentDiscount = document.querySelector('input[type=number][name="percentage_discount"]');
+    const amountDiscount  = document.querySelector('input[type=number][name="amount_discount"]');
 
+    // Mutually exclusive discount inputs (unchanged)
+    if (percentDiscount && amountDiscount) {
+        percentDiscount.addEventListener('input', function () {
+            if (this.value !== '') amountDiscount.value = '';
+        });
+
+        amountDiscount.addEventListener('input', function () {
+            if (this.value !== '') percentDiscount.value = '';
+        });
+    }
+    
+} catch(err) {
+    console.error('Error initializing certificate toggle:', err);
 }

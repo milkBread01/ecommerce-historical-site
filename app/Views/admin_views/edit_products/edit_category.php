@@ -11,6 +11,12 @@
                     <span class="badge badge-secondary">Child Category</span>
                 <?php endif; ?>
             </p>
+            <br><br>
+            <hr>
+            <br><br>
+            <a href="<?= base_url('admin/edit-products-dash') ?>" class="btn btn-primary">
+                Return to Edit Product Dashnoard
+            </a>
         </div>
 
         <div class="products-grid">
@@ -72,12 +78,17 @@
                                 Edit
                             </a>
                             
-                            <button type="button" 
+                            <form action="<?= site_url('admin/change-visibility') ?>" method="post">
+                                <input type="hidden" name="item_id" value="<?= esc($item['item_id']) ?>">
+                                <button  
                                     class="btn btn-toggle-visibility" 
                                     data-item-id="<?= $item['item_id'] ?>"
-                                    data-visible="<?= $item['visible'] ?>">
-                                <?= $item['visible'] ? 'Unpublish' : 'Publish' ?>
-                            </button>
+                                    data-visible="<?= $item['visible'] ?>"
+                                    type="submit"
+                                >
+                                    <?= $item['visible'] ? 'Unpublish' : 'Publish' ?>
+                                </button>
+                            </form>
                         </div>
                     </div>
                 <?php endforeach; ?>
@@ -86,42 +97,6 @@
     </main>
 
     <script>
-        // Toggle visibility functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            const toggleButtons = document.querySelectorAll('.btn-toggle-visibility');
-            
-            toggleButtons.forEach(button => {
-                button.addEventListener('click', function() {
-                    const itemId = this.dataset.itemId;
-                    const currentVisible = this.dataset.visible === '1';
-                    
-                    // Make AJAX request to toggle visibility
-                    fetch(`<?= base_url('admin/toggle-product-visibility') ?>`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        body: JSON.stringify({
-                            item_id: itemId,
-                            visible: !currentVisible
-                        })
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.success) {
-                            // Update the page
-                            location.reload();
-                        } else {
-                            alert('Error updating visibility');
-                        }
-                    })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        alert('Error updating visibility');
-                    });
-                });
-            });
-        });
+        
     </script>
 <?php $this->endSection(); ?>

@@ -10,7 +10,30 @@
         'pages_count',
         'condition_notes', 
 -->
+<?php
+    $bookData = $specs ?? [];
 
+    // get field value where priorety is: current Data (old() function) > db data > default value
+    $getValue = function($field, $default='') use($bookData){
+        $oldValue = old($field);
+
+        if( $oldValue !== null && $oldValue !== ''){
+            return $oldValue;
+        }
+
+        if(isset($bookData[$field]) && $bookData[$field] !== null){
+            return $bookData[$field];
+        }
+
+        return $default;
+    };
+
+    $isSelected = function($field, $value) use ($getValue) {
+        return $getValue($field) == $value ? 'selected' : '';
+
+    };
+
+?>
 <div class = "partial-section">
     <h2 class="section-title">Book Specifications</h2>
     <div class="form-group">
@@ -19,7 +42,7 @@
             type="text" 
             id="title" 
             name="title" 
-            value="<?= old('title') ?>"
+            value="<?= esc($getValue('title')) ?>"
         >
     </div>
     <div class="form-group">
@@ -28,7 +51,7 @@
             type="text" 
             id="author" 
             name="author" 
-            value="<?= old('author') ?>"
+            value="<?= esc($getValue('author')) ?>"
         >
     </div>
     <div class="form-group">
@@ -37,7 +60,7 @@
             type="text" 
             id="publisher" 
             name="publisher" 
-            value="<?= old('publisher') ?>"
+            value="<?= esc($getValue('publisher')) ?>"
         >
     </div>
     <div class="form-group">
@@ -46,7 +69,7 @@
             type="text" 
             id="publication_year" 
             name="publication_year" 
-            value="<?= old('publication_year') ?>"
+            value="<?= esc($getValue('publication_year')) ?>"
             placeholder="e.g., 1943 or c.1943"
         >
     </div>
@@ -56,7 +79,7 @@
             type="text" 
             id="edition_label" 
             name="edition_label" 
-            value="<?= old('edition_label') ?>"
+            value="<?= esc($getValue('edition_label')) ?>"
             placeholder="e.g., 1st ed., Revised"
         >
     </div>
@@ -66,7 +89,7 @@
             type="text" 
             id="binding_type" 
             name="binding_type" 
-            value="<?= old('binding_type') ?>"
+            value="<?= esc($getValue('binding_type')) ?>"
             placeholder="e.g., Hardcover, Softcover"
         >
     </div>
@@ -76,7 +99,7 @@
             type="text" 
             id="language_label" 
             name="language_label" 
-            value="<?= old('language_label') ?>"
+            value="<?= esc($getValue('language_label')) ?>"
             placeholder="e.g., English, German"
         >
     </div>
@@ -86,7 +109,7 @@
             type="number" 
             id="pages_count" 
             name="pages_count" 
-            value="<?= old('pages_count') ?>"
+            value="<?= esc($getValue('pages_count')) ?>"
             min="0"
         >
     </div>
@@ -95,6 +118,6 @@
         <textarea 
             id="condition_notes" 
             name="condition_notes"
-        ><?= old('condition_notes') ?></textarea>
+        ><?= esc($getValue('condition_notes')) ?></textarea>
     </div>
 </div>

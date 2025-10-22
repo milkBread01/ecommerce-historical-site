@@ -97,20 +97,16 @@ class EditProducts_c extends \App\Controllers\BaseController
 
         // Fetch all products with their categories and collections
         $products = $itemModel->select('items.*, categories.name as category_name, collections.collection_name as collection_name')
-                              ->join('categories', 'items.category_id = categories.category_id', 'left')
-                              ->join('collections', 'items.collection_id = collections.collection_id', 'left')
-                              ->findAll();
+            ->join('categories', 'items.category_id = categories.category_id', 'left')
+            ->join('collections', 'items.collection_id = collections.collection_id', 'left')
+            ->findAll();
 
+        // Get category counts
+        $categoryCounts = $this->getCategoryCounts($itemModel);
+        
         // Pass data to the view
         $categories = $categoryModel->findAll();
-        $organized = $this->organizeCategories($categories);
-        /* foreach($organized as $parent_id => $catData){
-                log_message('info', 'Parents |  '.$catData['category']['name']);
-            foreach($catData['children'] as $child){
-                $childName = $child['name'];
-                log_message('info', 'Children | '.$childName);
-            }
-        } */
+        $organized = $this->organizeCategories($categories, $categoryCounts);
 
         return view('admin_views/edit_products/edit_products_dash', [
             'products' => $products,
@@ -120,34 +116,90 @@ class EditProducts_c extends \App\Controllers\BaseController
         ]);
     }
 
-    private function organizeCategories($categories)
+    public function changeVisibility()
+    {
+        log_message('info', '++++++++++ CHANGE VIS HIT ++++++++++');
+        $item_id = $this->request->getPost('item_id');
+        log_message('info', 'Item ID: '. $item_id);
+        $itemModel = new ItemModel();
+
+        $visibilityStatus = $itemModel
+                ->select('visible')
+                ->where('item_id', $item_id)
+                ->first()['visible'];
+
+        $inverseVis = $visibilityStatus == 1 ? 0 : 1;
+        log_message('info', 'Visibility Status: '. $visibilityStatus);
+        log_message('info', 'Visibility Status Inverse: '. $inverseVis);
+        
+        $itemModel
+            ->update($item_id, 
+                ['visible' => $inverseVis
+            ]);
+
+        return redirect()->back();
+    }
+
+    private function getCategoryCounts($itemModel) 
+    {
+        // Get counts for all categories
+        $counts = $itemModel
+            ->select('category_id, COUNT(*) as item_count')
+            ->groupBy('category_id')
+            ->findAll();
+        
+        // Convert to associative array for easy lookup
+        $categoryCounts = [];
+        foreach ($counts as $count) {
+            $categoryCounts[$count['category_id']] = $count['item_count'];
+        }
+        
+        return $categoryCounts;
+    }
+
+    private function organizeCategories($categories, $categoryCounts = []) 
     {
         $organized = [];
-
+        
         // First, group parents
         foreach ($categories as $category) {
             if ($category['parent_id'] === null) {
                 $organized[$category['category_id']] = [
                     'category' => $category,
-                    'children' => []
+                    'children' => [],
+                    'item_count' => $categoryCounts[$category['category_id']] ?? 0,
+                    'total_count' => 0 // Will be calculated later to include children
                 ];
             }
         }
-
+        
         // Then, assign children to their parents
         foreach ($categories as $category) {
             if ($category['parent_id'] !== null) {
                 if (isset($organized[$category['parent_id']])) {
-                    $organized[$category['parent_id']]['children'][] = $category;
+                    $childCount = $categoryCounts[$category['category_id']] ?? 0;
+                    
+                    $organized[$category['parent_id']]['children'][] = array_merge(
+                        $category,
+                        ['item_count' => $childCount]
+                    );
+                    
+                    // Add child count to parent's total
+                    $organized[$category['parent_id']]['total_count'] += $childCount;
                 }
             }
         }
-
+        
+        // Add parent's own items to total_count
+        foreach ($organized as $categoryId => &$parent) {
+            $parent['total_count'] += $parent['item_count'];
+        }
+        
         // Sort parent categories by sort_order
         uasort($organized, function ($a, $b) {
             return $a['category']['sort_order'] <=> $b['category']['sort_order'];
         });
-
+        
         // Sort each parent's children by sort_order
         foreach ($organized as &$parent) {
             if (!empty($parent['children'])) {
@@ -156,7 +208,7 @@ class EditProducts_c extends \App\Controllers\BaseController
                 });
             }
         }
-
+        
         return $organized;
     }
 
@@ -308,8 +360,245 @@ class EditProducts_c extends \App\Controllers\BaseController
     public function edit_product($item_id)
     {
         // given the item id get all information for item from all relevant tables (items, itemGeneralInfo, spec table if applicable)
-        return view('admin_views/edit_products/edit_product');
+        //log_message('info', '+++++++ Item Id: '. $item_id);
+        $itemModel = new ItemModel();
+        $itemGeneralInfoModel = new ItemGeneralInfoModel();
+        $itemImageModel = new ItemImageModel();
+        $categoryModel = new CategoryModel();
+        $collectionModel = new CollectionModel();
+        $collectionId = $itemModel
+                    ->select('collection_id')
+                    ->where('item_id',$item_id)
+                    ->first()['collection_id'] ?? '';
+
+        //log_message('info','Collection ID: '. $collectionId);
+
+        $category_id = $itemModel
+                ->select('category_id')
+                ->where('item_id', $item_id)
+                ->first()['category_id'];
+        //log_message('info', '----- Category Id: '.$category_id);
+        
+        $item = $itemModel
+                ->where('item_id', $item_id)
+                ->first();
+        
+        $generalInfo = $itemGeneralInfoModel
+                ->where('item_id', $item_id)
+                ->first();
+        
+        $images = $itemImageModel
+            ->where('item_id', $item_id)
+            ->orderBy('is_primary', 'DESC')   // primary at the front
+            ->orderBy('image_order', 'ASC')   // then by your sort order
+            ->orderBy('image_id', 'ASC')      // stable tie-breaker
+            ->findAll();
+
+
+        //log_message('info','((((((((((((( IMAGE INFORMATION ))))))))))))))');
+        /* foreach($images as $image){
+            log_message('info', 'Image: ' . $image['title']);
+        } */
+        
+        // Get collection info if item belongs to a collection
+        $collection = null;
+        if (!empty($item['collection_id'])) {
+            $collection = $collectionModel
+                    ->where('collection_id', $item['collection_id'])
+                    ->first();
+            //log_message('info', '>>> Collection: ' . ($collection['collection_name'] ?? 'Not found'));
+        }
+        
+        // Get all collections for dropdown (in case user wants to change it)
+        $allCollections = $collectionModel->findAll();
+        
+        $categorySlug = $categoryModel
+                ->select('slug')
+                ->where('category_id', $category_id)
+                ->first()['slug'];
+        //log_message('info', '=== Slug: '.$categorySlug);
+        
+        $parentID = $categoryModel
+            ->select('parent_id')
+            ->where('category_id', $category_id)
+            ->first()['parent_id'];
+        
+        $parentSlug = $categoryModel
+            ->select('slug')
+            ->where('category_id', $parentID)
+            ->first()['slug'] ?? null;
+        //log_message('info', '*** Parent Slug: '.$parentSlug);
+        
+        switch ($parentSlug) {
+            case 'blades-edged-weapons':
+                $specModel = new ItemBladeSpecsModel();
+                break;
+            case 'books-manuals':
+                $specModel = new ItemBookSpecsModel();
+                break;
+            case 'documents-paper':
+                $specModel = new ItemDocumentSpecsModel();
+                break;
+            case 'field-gear-accoutrements':
+                $specModel = new ItemGearSpecsModel();
+                break;
+            case 'headgear':
+                $specModel = new ItemHeadgearSpecsModel();
+                break;
+            case 'insignia-awards':
+                $specModel = new ItemClothInsigniaSpecsModel();
+                break;
+            case 'medals':
+                $specModel = new ItemMedalSpecsModel();
+                break;
+            case 'uniforms':
+                $specModel = new ItemUniformSpecsModel();
+                break;
+            default:
+                $specModel = null;
+        }
+
+        //if($specModel) log_message('info', 'Spec Model Found');
+
+        /* $specs = $specModel ? $specModel
+                ->where('item_id', $item_id)
+                ->first() : null; */
+        $specs = $specModel
+                ->select()
+                ->where('item_id',$item_id)
+                ->first();
+        /* foreach($specs as $spec){
+            log_message('info', 'spec: '.$spec);
+        } */
+
+        // test of markigns 
+        $markings1 = $markings2 = $markings3 = '';
+
+        if (!empty($generalInfo['markings'])) {
+            $markingsParts = explode(',', $generalInfo['markings']);
+            $markings1 = trim($markingsParts[0]) ?? '';
+            $markings2 = trim($markingsParts[1]) ?? '';
+            $markings3 = trim($markingsParts[2]) ?? '';
+        }
+
+        /*
+        log_message('info','>>>>>>> Markings <<<<<<<<');
+        log_message('info','marking 1: '.$markings1);
+        log_message('info','marking 2: '.$markings2);
+        log_message('info','marking 3: '.$markings3); 
+        */
+
+        // test of materials
+        $material1 = $material2 = $material3 = '';
+
+        if (!empty($generalInfo['materials'])) {
+            $materialsParts = explode(',', $generalInfo['materials']);
+            $material1 = trim($materialsParts[0]) ?? '';
+            $material2 = trim($materialsParts[1]) ?? '';
+            $material3 = trim($materialsParts[2]) ?? '';
+        }
+
+        /*         
+        log_message('info','>>>>>>> Markings <<<<<<<<');
+        log_message('info','materials 1: '.$material1);
+        log_message('info','materials 2: '.$material2);
+        log_message('info','materials 3: '.$material3); 
+        */
+
+        // weight 
+        $weightValue = $weightUnit = '';
+
+        if (!empty($generalInfo['weight_label'])) {
+            $weightParts = explode(' ', $generalInfo['weight_label']);
+            $weightValue = trim($weightParts[0]) ?? '';
+            $weightUnit = trim($weightParts[1]) ?? '';
+        }
+        /* 
+        log_message('info','>>>>>>> Weight <<<<<<<<');
+        log_message('info','Weight Amount: '.$weightValue);
+        log_message('info','Weight Unit: '.$weightUnit);
+        */
+        // test dimensions
+        // format 'string x string x string x unit
+        // L,W,H can be blank but unit will default to 
+        $dimensionLength = $dimensionWidth = $dimensionHeight = $dimensionUnit = '';
+
+        if (!empty($generalInfo['dimensions_label'])) {
+            $dimensionsParts = explode('x', $generalInfo['dimensions_label']);
+
+            // Basic cleanup
+            $dimensionLength = isset($dimensionsParts[0]) ? trim($dimensionsParts[0]) : '0';
+            $dimensionWidth  = isset($dimensionsParts[1]) ? trim($dimensionsParts[1]) : '0';
+
+            if (isset($dimensionsParts[2])) {
+                // Split the last part by space to separate height and unit
+                $lastPart = trim($dimensionsParts[2]);
+                $heightParts = preg_split('/\s+/', $lastPart); // split by one or more spaces
+                $dimensionHeight = $heightParts[0] ?? '0';
+                $dimensionUnit   = $heightParts[1] ?? '';       // 'inches', 'cm', etc.
+            }
+        }
+        /*   
+        log_message('info','>>>>>>> Dimensions <<<<<<<<');
+        log_message('info','Dimensions Length: '.$dimensionLength);
+        log_message('info','Dimensions Width: ' .$dimensionWidth);
+        log_message('info','Dimensions Height: '.$dimensionHeight);
+        log_message('info','Dimensions Unit: '  .$dimensionUnit); 
+        */
+
+        /* 
+        $isBundle = $collectionModel
+                ->select('is_bundle_only')
+                ->where('collection_id',$collectionId)
+                ->first()['is_bundle_only'] ?? '';
+        log_message('info', 'Is it a Bundle'. $isBundle === ''? "True": "False"); 
+        */
+
+        $allCategories = (new CategoryModel())->where('is_visible', 1)->findAll();
+        $categories = $this->organizeCategories($allCategories);
+
+        return view('admin_views/edit_products/edit_product', [
+            'item' => $item,                         // General Info
+            'generalInfo' => $generalInfo,           // Historical Info
+            'images' => $images,
+            'specs' => $specs,
+            'categorySlug' => $categorySlug,
+            'parentSlug' => $parentSlug,
+            'collection' => $collection,              // Current collection (if any)
+            'collections' => $allCollections,      // For dropdown to change collection
+            'categories' => $categories,            // Organized categories for dropdown
+            // return also dimensions, markings, materials vars
+            'dimensionLength' => $dimensionLength,
+            'dimensionWidth' => $dimensionWidth,
+            'dimensionHeight' => $dimensionHeight,
+            'dimensionUnit' => $dimensionUnit,
+
+            'markings1' => $markings1,
+            'markings2' => $markings2,
+            'markings3' => $markings3,
+
+            'material1' => $material1,
+            'material2' => $material2,
+            'material3' => $material3,
+            'weightValue' => $weightValue,
+            'weightUnit' => $weightUnit,
+        ]);
     }
-    
+
+    public function update_product()
+    {
+        
+    }
+
+    public function update_image()
+    {
+       
+    }
+
+    public function delete_image()
+    {
+
+    }
+
 }
 
